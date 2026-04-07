@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tab Hoarder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Browser chrome bar -->
+  <header id="browser-bar">
+    <div id="ram-section">
+      <span class="bar-label">RAM</span>
+      <div id="health-bar">
+        <div class="health-segment"></div>
+        <div class="health-segment"></div>
+        <div class="health-segment"></div>
+        <div class="health-segment"></div>
+        <div class="health-segment"></div>
+      </div>
+    </div>
+
+    <div id="url-bar">tab-hoarder://survive</div>
+
+    <div id="hud-right">
+      <span id="multiplier-display"></span>
+      <span id="score-display">0</span>
+      <span id="game-timer">00:00</span>
+    </div>
+  </header>
+
+  <!-- Game area where tabs spawn -->
+  <main id="tab-area"></main>
+
+  <!-- Start screen -->
+  <div id="start-screen">
+    <div id="start-card">
+      <h1>Tab Hoarder</h1>
+      <p>Tabs keep spawning. Complete each mini-game before it expires.<br>
+         Lose all 5 RAM bars and your browser crashes.</p>
+
+      <div id="type-hints">
+        <div><strong>Click Spam</strong> — click 15× fast</div>
+        <div><strong>Timer Hold</strong> — hold exactly 3s</div>
+        <div><strong>Memory</strong> — repeat the sequence</div>
+        <div><strong>Precision</strong> — hit the moving target</div>
+        <div><strong>Type It</strong> — type the word shown</div>
+        <div><strong>Math</strong> — pick the right answer</div>
+        <div><strong>Stroop</strong> — click the text's ink color</div>
+        <div><strong>Sequence</strong> — click 1 → 5 in order</div>
+        <div><strong>Reaction</strong> — wait, then click fast</div>
+      </div>
+
+      <div id="fake-hint">
+        <span id="fake-hint-label">⚠️ Fake Tabs</span>
+        Tabs that look real but can't be completed. Click the mini-game to expose one, then hit the <strong>✕</strong> to close it safely. Let it expire and you lose a RAM bar.
+      </div>
+
+      <button id="start-btn">Start Game</button>
+    </div>
+  </div>
+
+  <!-- Crash screen -->
+  <div id="crash-screen" class="hidden">
+    <div id="crash-content">
+      <div id="crash-face">:(</div>
+      <h1>Your browser crashed.</h1>
+      <p id="crash-sub">Too many tabs open.</p>
+      <div id="final-stats">
+        <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
+        <div>Final score &nbsp;<span id="final-score">0</span></div>
+      </div>
+      <p id="share-preview"></p>
+      <button id="copy-btn">📋 Copy &amp; Share</button>
+      <button id="restart-btn">Restart</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
