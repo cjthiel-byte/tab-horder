@@ -5,6 +5,7 @@
 /* ── constants ── */
 const MAX_HEALTH    = 5;
 const BASE_SPAWN_MS = 4000;
+const LS_KEY        = 'tabHoarder_best';
 
 const TITLES = [
   'URGENT!!!', 'You forgot this', "Don't ignore me",
@@ -67,6 +68,20 @@ const STROOP_COLORS = [
 const WORDS_NORMAL = ['CLOSE', 'CLEAR', 'VIRUS', 'CRASH', 'ERROR', 'PIXEL', 'CLICK', 'BYTES', 'QUERY', 'CACHE', 'LOGIN', 'BLOCK'];
 const WORDS_PANIC  = ['TIMEOUT', 'NETWORK', 'PROCESS', 'PROGRAM', 'BROWSER', 'DIGITAL'];
 
+/* ── high score ── */
+function loadBest() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { score: 0, time: 0 }; }
+  catch { return { score: 0, time: 0 }; }
+}
+function saveBest(score, time) {
+  const prev = loadBest();
+  if (score > prev.score) {
+    localStorage.setItem(LS_KEY, JSON.stringify({ score, time }));
+    return true;
+  }
+  return false;
+}
+
 /* ── state ── */
 let S = {};
 
@@ -88,6 +103,8 @@ function newState() {
     fakeOn:     false,
     panicOn:    false,
     doubleOn:   false,
+    bonusOn:    false,
+    criticalOn: false,
     scaleLevel: 0,
     zTop:       100,
     shareMsg:   '',
@@ -134,6 +151,56 @@ function getMult(streak) {
   if (streak >= 6)  return 2;
   if (streak >= 3)  return 1.5;
   return 1;
+}
+
+/* ── URL bar ── */
+let urlToastTid = null;
+
+function getBaseUrl() {
+  if (!S.running) return 'tab-hoarder://survive';
+  if (S.health <= 1) return 'tab-hoarder://this-is-fine';
+  if (S.health <= 2) return 'tab-hoarder://please-help';
+  if (S.doubleOn) return 'tab-hoarder://system-overload';
+  if (S.panicOn)  return 'tab-hoarder://send-help';
+  if (S.fakeOn)   return 'tab-hoarder://trust-no-one';
+  return 'tab-hoarder://survive';
+}
+
+function setUrl(text, toastMs = 0) {
+  if (toastMs > 0) {
+    clearTimeout(urlToastTid);
+    dom.urlBar.textContent = text;
+    dom.urlBar.classList.add('url-toast');
+    urlToastTid = setTimeout(() => {
+      urlToastTid = null;
+      dom.urlBar.classList.remove('url-toast');
+      dom.urlBar.textContent = getBaseUrl();
+    }, toastMs);
+  } else if (!urlToastTid) {
+    dom.urlBar.textContent = text;
+  }
+}
+
+function updateUrl() {
+  setUrl(getBaseUrl());
+}
+
+/* ── score popup ── */
+function spawnScorePopup(el, points, isBig) {
+  const rect = el.getBoundingClientRect();
+  const popup = mk('div', 'score-popup' + (isBig ? ' score-popup-big' : ''));
+  popup.textContent = '+' + points.toLocaleString();
+  popup.style.left = (rect.left + rect.width / 2) + 'px';
+  popup.style.top  = (rect.top + 24) + 'px';
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 850);
+}
+
+/* ── tab count ── */
+function refreshTabCount() {
+  let active = 0;
+  S.tabs.forEach(t => { if (!t.done && !t.gone) active++; });
+  dom.tabCountEl.textContent = S.running && active > 0 ? active + ' open' : '';
 }
 
 /* ══════════════════════════════════════════════
@@ -436,7 +503,6 @@ function mkTypeIt(tab) {
     <div class="type-hint">click to focus</div>`;
 
   const letters = el.querySelectorAll('.type-letter');
-  const hint    = el.querySelector('.type-hint');
 
   function focus() { setTypeFocus(tab.id); }
 
@@ -710,10 +776,25 @@ function spawnTab() {
     cleanup:     null,
     keyHandler:  null,
     hasKeyboard: gameT === T.TYPE_IT,
+    isBonus:     false,
+    isCritical:  false,
   };
 
+  // Roll bonus / critical (mutually exclusive, not on panic/fake)
+  if (!isPanic && type !== T.FAKE) {
+    if (S.bonusOn && Math.random() < 0.12) {
+      tab.isBonus = true;
+    } else if (S.criticalOn && Math.random() < 0.15) {
+      tab.isCritical = true;
+    }
+  }
+
   /* build card */
-  const card = mk('div', 'tab-card' + (isPanic ? ' panic' : ''));
+  let cardClass = 'tab-card';
+  if (isPanic)        cardClass += ' panic';
+  if (tab.isBonus)    cardClass += ' bonus-tab';
+  if (tab.isCritical) cardClass += ' critical-tab';
+  const card = mk('div', cardClass);
   card.id = `tab-${id}`;
 
   const area = dom.area;
@@ -723,16 +804,38 @@ function spawnTab() {
   card.style.left = rand(10, mx) + 'px';
   card.style.top  = rand(10, my) + 'px';
 
+  /* bonus / critical banner */
+  if (tab.isBonus) {
+    const banner = mk('div', 'tab-type-banner bonus-banner');
+    banner.textContent = '★  BONUS  ·  +2× SCORE';
+    card.appendChild(banner);
+  } else if (tab.isCritical) {
+    const banner = mk('div', 'tab-type-banner critical-banner');
+    banner.textContent = '⚠  CRITICAL  ·  −2 RAM';
+    card.appendChild(banner);
+  }
+
   /* header */
   const header = mk('div', 'tab-header');
   header.innerHTML = `
     <div class="tab-title-row">
       <div class="tab-favicon" style="background:${FAVICON_COLOR[gameT] || '#4285f4'}"></div>
       <span class="tab-title">${tab.title}</span>
+      <div class="tab-minimize-btn" title="Minimize">−</div>
       <div class="tab-close-x">✕</div>
     </div>
     <div class="tab-timer-track"><div class="tab-timer-fill"></div></div>`;
   card.appendChild(header);
+
+  /* minimize button */
+  const minBtn = header.querySelector('.tab-minimize-btn');
+  minBtn.addEventListener('mousedown', e => e.stopPropagation());
+  minBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const isMin = card.classList.toggle('minimized');
+    minBtn.textContent = isMin ? '+' : '−';
+    minBtn.title = isMin ? 'Restore' : 'Minimize';
+  });
 
   /* mini-game content */
   tab.element = card;
@@ -766,6 +869,8 @@ function spawnTab() {
     card.style.opacity   = '1';
     card.style.transform = 'scale(1) translateY(0)';
   }));
+
+  refreshTabCount();
 }
 
 function completeTab(id) {
@@ -775,11 +880,16 @@ function completeTab(id) {
   tab.cleanup?.();
 
   /* scoring */
-  const prevMult = S.mult;
+  const prevMult  = S.mult;
+  const bonusMult = tab.isBonus ? 2 : 1;
   S.streak++;
   S.mult  = getMult(S.streak);
-  S.score += Math.round(100 * S.mult);
+  const points = Math.round(100 * S.mult * bonusMult);
+  S.score += points;
   refreshHUD(S.mult > prevMult);
+
+  /* score popup */
+  spawnScorePopup(tab.element, points, tab.isBonus || S.mult > 1);
 
   /* green flash, then fly out */
   const c = tab.element;
@@ -805,7 +915,13 @@ function expireTab(id) {
   S.streak = 0;
   S.mult   = 1;
   refreshHUD(false);
-  loseHealth();
+
+  // Bonus tabs don't cost health when missed
+  if (!tab.isBonus) {
+    loseHealth();
+    // Critical tabs deal double damage
+    if (tab.isCritical) loseHealth();
+  }
 
   /* red flash, then shrink out */
   const c = tab.element;
@@ -841,6 +957,7 @@ function dropTab(id) {
   S.tabs.delete(id);
   // if the dropped tab was the keyboard focus, clear it
   if (activeTypeId === id) activeTypeId = null;
+  refreshTabCount();
 }
 
 /* ══════════════════════════════════════════════
@@ -851,6 +968,7 @@ function loseHealth() {
   if (!S.running) return;
   S.health = Math.max(0, S.health - 1);
   renderHealth();
+  updateUrl();
   dom.area.classList.add('shaking');
   setTimeout(() => dom.area.classList.remove('shaking'), 500);
   if (S.health <= 0) endGame();
@@ -922,11 +1040,24 @@ function clockTick() {
     S.scaleLevel = lvl;
     S.spawnMs    = Math.max(800, S.spawnMs * 0.9);
     restartSpawn();
+    if (t === 30) setUrl('tab-hoarder://speed-increasing', 3500);
   }
 
-  if (t >= 60  && !S.fakeOn)   S.fakeOn   = true;
-  if (t >= 120 && !S.panicOn)  S.panicOn  = true;
-  if (t >= 180 && !S.doubleOn) { S.doubleOn = true; restartSpawn(); }
+  if (t >= 60  && !S.fakeOn)   {
+    S.fakeOn  = true;
+    S.bonusOn = true;
+    setUrl('tab-hoarder://fake-tabs-incoming', 3500);
+  }
+  if (t >= 120 && !S.panicOn)  {
+    S.panicOn     = true;
+    S.criticalOn  = true;
+    setUrl('tab-hoarder://PANIC', 3500);
+  }
+  if (t >= 180 && !S.doubleOn) {
+    S.doubleOn = true;
+    restartSpawn();
+    setUrl('tab-hoarder://system-overload', 3500);
+  }
 }
 
 function restartSpawn() {
@@ -945,6 +1076,8 @@ function startGame() {
   clearInterval(S.spawnTid);
   clearInterval(S.tickTid);
   clearInterval(S.clockTid);
+  clearTimeout(urlToastTid);
+  urlToastTid = null;
   S.tabs.forEach(t => t.cleanup?.());
 
   activeTypeId = null;
@@ -955,9 +1088,12 @@ function startGame() {
   dom.area.innerHTML = '';
   dom.startScreen.classList.add('hidden');
   dom.crashScreen.classList.add('hidden');
+  dom.urlBar.classList.remove('url-toast');
+  dom.urlBar.textContent = 'tab-hoarder://survive';
 
   renderHealth();
   refreshHUD();
+  refreshTabCount();
   dom.timerEl.textContent = '00:00';
 
   S.tickTid  = setInterval(tick,      100);
@@ -973,9 +1109,16 @@ function endGame() {
   clearInterval(S.clockTid);
   S.tabs.forEach(t => t.cleanup?.());
 
-  const timeStr = fmt(S.elapsed);
+  const timeStr  = fmt(S.elapsed);
+  const isRecord = saveBest(S.score, S.elapsed);
+
   dom.finalTimeEl.textContent  = timeStr;
   dom.finalScoreEl.textContent = S.score.toLocaleString();
+
+  // high score on crash screen
+  const best = loadBest();
+  dom.bestCrashEl.textContent = best.score.toLocaleString();
+  dom.newRecordEl.classList.toggle('hidden', !isRecord);
 
   S.shareMsg = `I survived ${timeStr} in Tab Hoarder 🖥️💀 — beat that: [url]`;
   dom.sharePreviewEl.textContent = S.shareMsg;
@@ -994,18 +1137,30 @@ document.addEventListener('DOMContentLoaded', () => {
     scoreEl:        $('score-display'),
     multEl:         $('multiplier-display'),
     timerEl:        $('game-timer'),
+    tabCountEl:     $('tab-count'),
+    urlBar:         $('url-bar'),
     startScreen:    $('start-screen'),
     crashScreen:    $('crash-screen'),
     finalTimeEl:    $('final-time'),
     finalScoreEl:   $('final-score'),
+    bestCrashEl:    $('best-crash-score'),
+    newRecordEl:    $('new-record'),
     sharePreviewEl: $('share-preview'),
     copyBtn:        $('copy-btn'),
     startBtn:       $('start-btn'),
     restartBtn:     $('restart-btn'),
+    startBestEl:    $('start-best-score'),
   };
 
   S = newState();
   initDrag();
+
+  // Show high score on start screen
+  const best = loadBest();
+  if (best.score > 0) {
+    dom.startBestEl.textContent = `Best: ${best.score.toLocaleString()} (${fmt(best.time)})`;
+    dom.startBestEl.classList.remove('hidden');
+  }
 
   // Global keyboard handler for Type It tabs
   document.addEventListener('keydown', e => {

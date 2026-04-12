@@ -24,6 +24,7 @@
     <div id="url-bar">tab-hoarder://survive</div>
 
     <div id="hud-right">
+      <span id="tab-count"></span>
       <span id="multiplier-display"></span>
       <span id="score-display">0</span>
       <span id="game-timer">00:00</span>
@@ -57,6 +58,7 @@
         Tabs that look real but can't be completed. Click the mini-game to expose one, then hit the <strong>✕</strong> to close it safely. Let it expire and you lose a RAM bar.
       </div>
 
+      <div id="start-best-score" class="hidden"></div>
       <button id="start-btn">Start Game</button>
     </div>
   </div>
@@ -67,9 +69,11 @@
       <div id="crash-face">:(</div>
       <h1>Your browser crashed.</h1>
       <p id="crash-sub">Too many tabs open.</p>
+      <div id="new-record" class="hidden">NEW RECORD!</div>
       <div id="final-stats">
         <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
         <div>Final score &nbsp;<span id="final-score">0</span></div>
+        <div>Best score &nbsp;<span id="best-crash-score">0</span></div>
       </div>
       <p id="share-preview"></p>
       <button id="copy-btn">📋 Copy &amp; Share</button>
