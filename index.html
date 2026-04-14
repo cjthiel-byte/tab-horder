@@ -25,6 +25,7 @@
 
     <div id="hud-right">
       <span id="tab-count"></span>
+      <span id="streak-display"></span>
       <span id="multiplier-display"></span>
       <span id="score-display">0</span>
       <span id="game-timer">00:00</span>
@@ -51,12 +52,23 @@
         <div><strong>Stroop</strong> — click the text's ink color</div>
         <div><strong>Sequence</strong> — click 1 → 5 in order</div>
         <div><strong>Reaction</strong> — wait, then click fast</div>
+        <div><strong>Slider</strong> — stop in the green zone</div>
+        <div><strong>Captcha</strong> — select matching icons</div>
+        <div><strong>Drag &amp; Drop</strong> — file to the right folder</div>
+        <div><strong>Password</strong> — build a valid password</div>
       </div>
 
       <div id="fake-hint">
         <span id="fake-hint-label">⚠️ Fake Tabs</span>
-        Tabs that look real but can't be completed. Click the mini-game to expose one, then hit the <strong>✕</strong> to close it safely. Let it expire and you lose a RAM bar.
+        Any tab can be fake — disguised as a real mini-game. Try to complete it to expose it, then hit <strong>✕</strong> to close it for bonus points. Let it expire and you lose a RAM bar.
       </div>
+
+      <div id="difficulty-picker">
+        <button class="diff-btn" data-diff="chill">Chill</button>
+        <button class="diff-btn active" data-diff="normal">Normal</button>
+        <button class="diff-btn" data-diff="chaos">Chaos</button>
+      </div>
+      <div id="diff-desc">Moderate speed, all mechanics unlock over time.</div>
 
       <div id="start-best-score" class="hidden"></div>
       <button id="start-btn">Start Game</button>
@@ -74,6 +86,11 @@
         <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
         <div>Final score &nbsp;<span id="final-score">0</span></div>
         <div>Best score &nbsp;<span id="best-crash-score">0</span></div>
+      </div>
+      <div id="run-stats">
+        <div><span id="stat-done">0</span> completed &nbsp;·&nbsp; <span id="stat-missed">0</span> missed</div>
+        <div>Best streak &nbsp;<span id="stat-streak">0</span></div>
+        <div id="stat-fav-row">Favorite &nbsp;<span id="stat-fav">—</span></div>
       </div>
       <p id="share-preview"></p>
       <button id="copy-btn">📋 Copy &amp; Share</button>

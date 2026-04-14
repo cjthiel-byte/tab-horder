@@ -3,9 +3,8 @@
    ============================================== */
 
 /* ── constants ── */
-const MAX_HEALTH    = 5;
-const BASE_SPAWN_MS = 4000;
-const LS_KEY        = 'tabHoarder_best';
+const MAX_HEALTH = 5;
+const LS_KEY     = 'tabHoarder_best';
 
 const TITLES = [
   'URGENT!!!', 'You forgot this', "Don't ignore me",
@@ -14,6 +13,20 @@ const TITLES = [
 ];
 
 const SYMBOLS = ['★', '●', '▲', '■', '♦'];
+
+const POWERUP = {
+  RAM:    'ram',
+  FREEZE: 'freeze',
+  NUKE:   'nuke',
+  DOUBLE: 'double',
+};
+
+const POWERUP_CONFIG = {
+  [POWERUP.RAM]:    { label: '💉 RAM Restore',    desc: 'Recover 1 RAM bar',         color: '#4caf50' },
+  [POWERUP.FREEZE]: { label: '❄️ Time Freeze',    desc: 'Slow spawns for 8s',         color: '#29b6f6' },
+  [POWERUP.NUKE]:   { label: '💣 Tab Nuke',       desc: 'Clear all open tabs',        color: '#ff7043' },
+  [POWERUP.DOUBLE]: { label: '⚡ Double Score',   desc: '2× points for 15s',          color: '#ffd740' },
+};
 
 const T = {
   CLICK_SPAM: 'clickSpam',
@@ -27,6 +40,12 @@ const T = {
   STROOP:     'stroop',
   SEQUENCE:   'sequence',
   REACTION:   'reaction',
+  SLIDER:     'slider',
+  CAPTCHA:    'captcha',
+  DRAGDROP:   'dragDrop',
+  PASSWORD:   'password',
+  POWERUP:    'powerup',
+  BOSS:       'boss',
 };
 
 const TIME_LIMIT = {
@@ -40,8 +59,26 @@ const TIME_LIMIT = {
   [T.STROOP]:     7,
   [T.SEQUENCE]:   8,
   [T.REACTION]:   7,
+  [T.SLIDER]:     7,
+  [T.CAPTCHA]:    10,
+  [T.DRAGDROP]:   8,
+  [T.PASSWORD]:   10,
+  [T.POWERUP]:    12,
 };
+
+// Per-type panic overrides (defaults to PANIC_TIME if not listed)
 const PANIC_TIME = 5;
+const PANIC_TIME_OVERRIDE = {
+  [T.TYPE_IT]:  6,
+  [T.MATH]:     6,
+  [T.SEQUENCE]: 6,
+  [T.CAPTCHA]:  7,
+  [T.PASSWORD]: 7,
+};
+
+function getPanicTime(type) {
+  return PANIC_TIME_OVERRIDE[type] ?? PANIC_TIME;
+}
 
 const FAVICON_COLOR = {
   [T.CLICK_SPAM]: '#4285f4',
@@ -54,6 +91,11 @@ const FAVICON_COLOR = {
   [T.STROOP]:     '#e91e63',
   [T.SEQUENCE]:   '#795548',
   [T.REACTION]:   '#009688',
+  [T.SLIDER]:     '#607d8b',
+  [T.CAPTCHA]:    '#5c6bc0',
+  [T.DRAGDROP]:   '#8d6e63',
+  [T.PASSWORD]:   '#26a69a',
+  [T.POWERUP]:    '#4caf50',
 };
 
 const STROOP_COLORS = [
@@ -67,6 +109,20 @@ const STROOP_COLORS = [
 
 const WORDS_NORMAL = ['CLOSE', 'CLEAR', 'VIRUS', 'CRASH', 'ERROR', 'PIXEL', 'CLICK', 'BYTES', 'QUERY', 'CACHE', 'LOGIN', 'BLOCK'];
 const WORDS_PANIC  = ['TIMEOUT', 'NETWORK', 'PROCESS', 'PROGRAM', 'BROWSER', 'DIGITAL'];
+
+/* ── difficulty ── */
+const DIFF = {
+  chill:  { spawnMs: 6000, minSpawnMs: 1200, scaleInterval: 45, fakeAt: 90,  panicAt: 180, doubleAt: 270 },
+  normal: { spawnMs: 4000, minSpawnMs: 800,  scaleInterval: 30, fakeAt: 60,  panicAt: 120, doubleAt: 180 },
+  chaos:  { spawnMs: 2500, minSpawnMs: 600,  scaleInterval: 20, fakeAt: 30,  panicAt: 60,  doubleAt: 120 },
+};
+const DIFF_DESC = {
+  chill:  'Slower spawns, longer ramp-up. Good for learning.',
+  normal: 'Moderate speed, all mechanics unlock over time.',
+  chaos:  'Fast from the start. Panic mode hits early. Good luck.',
+};
+
+let chosenDiff = 'normal';
 
 /* ── high score ── */
 function loadBest() {
@@ -96,7 +152,8 @@ function newState() {
     elapsed:    0,
     tabs:       new Map(),
     nextId:     0,
-    spawnMs:    BASE_SPAWN_MS,
+    spawnMs:    DIFF[chosenDiff].spawnMs,
+    diffCfg:    DIFF[chosenDiff],
     spawnTid:   null,
     tickTid:    null,
     clockTid:   null,
@@ -108,6 +165,16 @@ function newState() {
     scaleLevel: 0,
     zTop:       100,
     shareMsg:   '',
+    tabsDone:   0,
+    tabsMissed: 0,
+    bestStreak: 0,
+    typeCounts: {},
+    powerupOn:  false,
+    freezeActive: false,
+    doubleScoreActive: false,
+    doubleScoreTid: null,
+    freezeTid: null,
+    bossAlive: false,
   };
 }
 
@@ -183,6 +250,16 @@ function setUrl(text, toastMs = 0) {
 
 function updateUrl() {
   setUrl(getBaseUrl());
+}
+
+/* ── completion burst ── */
+function spawnCompletionBurst(el) {
+  const rect = el.getBoundingClientRect();
+  const burst = mk('div', 'completion-burst');
+  burst.style.left = (rect.left + rect.width  / 2) + 'px';
+  burst.style.top  = (rect.top  + rect.height / 2) + 'px';
+  document.body.appendChild(burst);
+  setTimeout(() => burst.remove(), 500);
 }
 
 /* ── score popup ── */
@@ -295,7 +372,7 @@ function mkClickSpam(tab) {
 /* ── Timer Hold ── */
 function mkTimerHold(tab) {
   const target = 3.0;
-  const tol    = tab.isPanic ? 0.18 : 0.35;
+  const tol    = tab.isPanic ? 0.22 : 0.35;
   const maxBar = 5.0;
 
   const targetPct = (target / maxBar) * 100;
@@ -461,33 +538,6 @@ function mkPrecision(tab) {
   target.addEventListener('click', () => completeTab(tab.id));
 
   return { el, cleanup: () => cancelAnimationFrame(rafId) };
-}
-
-/* ── Fake ── */
-function mkFake(tab) {
-  const el = mk('div', 'tab-content');
-  el.innerHTML = `
-    <p class="mg-instruction">Click the button <strong>15 times!</strong></p>
-    <div class="mg-click-count">0/15</div>
-    <div class="mg-click-bar"><div class="mg-click-bar-fill" style="width:0%"></div></div>
-    <button class="mg-btn">CLICK!</button>`;
-
-  el.querySelector('.mg-btn').addEventListener('click', () => {
-    const card = tab.element;
-    if (!card || card.querySelector('.fake-warning')) return;
-
-    card.classList.add('fake-penalty');
-    const warn = mk('div', 'fake-warning');
-    warn.textContent = 'FAKE TAB! 🙈';
-    card.appendChild(warn);
-
-    setTimeout(() => {
-      warn.remove();
-      card.classList.remove('fake-penalty');
-    }, 900);
-  });
-
-  return { el, cleanup: () => {} };
 }
 
 /* ── Type It ── */
@@ -726,6 +776,439 @@ function mkReaction(tab) {
   return { el, cleanup: () => clearTimeout(waitTid) };
 }
 
+/* ── Slider ── */
+function mkSlider(tab) {
+  const zoneW  = tab.isPanic ? 12 : 20; // target zone width as % of track
+  const speed  = tab.isPanic ? 55 : 35; // % per second
+  const zoneL  = rand(10, 90 - zoneW);  // zone left edge %
+
+  const el = mk('div', 'tab-content');
+  el.innerHTML = `
+    <p class="mg-instruction">Stop the slider in the <strong>green zone!</strong></p>
+    <div class="slider-track">
+      <div class="slider-zone" style="left:${zoneL}%;width:${zoneW}%"></div>
+      <div class="slider-handle"></div>
+    </div>
+    <button class="mg-btn slider-stop-btn">STOP!</button>
+    <div class="slider-feedback"></div>`;
+
+  const handle  = el.querySelector('.slider-handle');
+  const feedEl  = el.querySelector('.slider-feedback');
+
+  let pos = 0, dir = 1, rafId = null, lastTs = null, stopped = false;
+
+  function frame(ts) {
+    if (lastTs === null) lastTs = ts;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+    pos += dir * speed * dt;
+    if (pos >= 100) { pos = 100; dir = -1; }
+    if (pos <= 0)   { pos = 0;   dir =  1; }
+    handle.style.left = pos + '%';
+    rafId = requestAnimationFrame(frame);
+  }
+  rafId = requestAnimationFrame(frame);
+
+  el.querySelector('.slider-stop-btn').addEventListener('click', () => {
+    if (stopped) return;
+    stopped = true;
+    cancelAnimationFrame(rafId);
+    rafId = null;
+
+    if (pos >= zoneL && pos <= zoneL + zoneW) {
+      handle.style.background = '#4caf50';
+      completeTab(tab.id);
+    } else {
+      handle.style.background = '#f44336';
+      feedEl.textContent = 'Missed! Watch the zone.';
+      feedEl.style.color = '#f44336';
+      setTimeout(() => {
+        stopped = false;
+        pos = 0; dir = 1; lastTs = null;
+        handle.style.background = '';
+        feedEl.textContent = '';
+        rafId = requestAnimationFrame(frame);
+      }, 800);
+    }
+  });
+
+  return { el, cleanup: () => { if (rafId) cancelAnimationFrame(rafId); } };
+}
+
+/* ── Captcha ── */
+function mkCaptcha(tab) {
+  const ICONS = [
+    { icon: '🚗', label: 'cars' },
+    { icon: '🌳', label: 'trees' },
+    { icon: '🏠', label: 'houses' },
+    { icon: '⛵', label: 'boats' },
+    { icon: '✈️', label: 'planes' },
+    { icon: '🚲', label: 'bikes' },
+    { icon: '🐱', label: 'cats' },
+    { icon: '🍎', label: 'apples' },
+  ];
+  const cols = tab.isPanic ? 4 : 3;
+  const total = cols * cols;
+  const target = pick(ICONS);
+  const others = ICONS.filter(i => i.label !== target.label);
+
+  // Pick how many correct (2-4)
+  const correctCount = rand(2, Math.min(4, total - 2));
+  const cells = [];
+  for (let i = 0; i < correctCount; i++) cells.push({ ...target, correct: true });
+  while (cells.length < total) cells.push({ ...pick(others), correct: false });
+  shuffle(cells);
+
+  let selected = new Set();
+  const correctIds = new Set(cells.map((c, i) => c.correct ? i : -1).filter(i => i >= 0));
+
+  const el = mk('div', 'tab-content');
+  el.style.padding = '10px 10px 8px';
+  el.innerHTML = `
+    <p class="mg-instruction">Select all <strong>${target.label}</strong></p>
+    <div class="captcha-grid" style="grid-template-columns:repeat(${cols},1fr)">
+      ${cells.map((c, i) => `<button class="captcha-cell" data-i="${i}">${c.icon}</button>`).join('')}
+    </div>
+    <button class="mg-btn captcha-verify-btn">Verify</button>`;
+
+  const grid = el.querySelector('.captcha-grid');
+  const verifyBtn = el.querySelector('.captcha-verify-btn');
+
+  grid.addEventListener('click', e => {
+    const cell = e.target.closest('.captcha-cell');
+    if (!cell) return;
+    const i = parseInt(cell.dataset.i);
+    if (selected.has(i)) { selected.delete(i); cell.classList.remove('captcha-sel'); }
+    else                 { selected.add(i);    cell.classList.add('captcha-sel'); }
+  });
+
+  verifyBtn.addEventListener('click', () => {
+    const isCorrect =
+      selected.size === correctIds.size &&
+      [...selected].every(i => correctIds.has(i));
+
+    if (isCorrect) {
+      completeTab(tab.id);
+    } else {
+      // flash wrong selections
+      el.querySelectorAll('.captcha-cell').forEach((cell, i) => {
+        if (selected.has(i) && !correctIds.has(i)) cell.classList.add('captcha-wrong');
+        if (!selected.has(i) && correctIds.has(i)) cell.classList.add('captcha-missed');
+      });
+      selected.clear();
+      setTimeout(() => {
+        el.querySelectorAll('.captcha-cell').forEach(c => {
+          c.classList.remove('captcha-sel', 'captcha-wrong', 'captcha-missed');
+        });
+      }, 600);
+    }
+  });
+
+  return { el, cleanup: () => {} };
+}
+
+/* ── Drag & Drop ── */
+function mkDragDrop(tab) {
+  const FILES = [
+    { icon: '📄', label: 'report.txt' },
+    { icon: '🖼️', label: 'photo.png' },
+    { icon: '🎵', label: 'music.mp3' },
+    { icon: '📊', label: 'data.csv' },
+    { icon: '📦', label: 'archive.zip' },
+  ];
+  const FOLDERS = [
+    { icon: '📁', label: 'Documents' },
+    { icon: '🗂️', label: 'Work' },
+    { icon: '💾', label: 'Backup' },
+    { icon: '🗃️', label: 'Archives' },
+  ];
+
+  const correctFile   = pick(FILES);
+  const correctFolder = pick(FOLDERS);
+  const decoyFiles    = shuffle(FILES.filter(f => f !== correctFile)).slice(0, tab.isPanic ? 2 : 1);
+  const decoyFolders  = shuffle(FOLDERS.filter(f => f !== correctFolder)).slice(0, tab.isPanic ? 1 : 0);
+
+  const allFiles   = shuffle([correctFile, ...decoyFiles]);
+  const allFolders = shuffle([correctFolder, ...decoyFolders]);
+
+  const el = mk('div', 'tab-content');
+  el.style.padding = '10px 10px 8px';
+  el.innerHTML = `
+    <p class="mg-instruction">Drop <strong>${correctFile.icon} ${correctFile.label}</strong> into <strong>${correctFolder.icon} ${correctFolder.label}</strong></p>
+    <div class="dd-area">
+      <div class="dd-files">
+        ${allFiles.map(f => `<div class="dd-file" draggable="true" data-label="${f.label}">${f.icon}<span>${f.label}</span></div>`).join('')}
+      </div>
+      <div class="dd-folders">
+        ${allFolders.map(f => `<div class="dd-folder" data-label="${f.label}">${f.icon}<span>${f.label}</span></div>`).join('')}
+      </div>
+    </div>`;
+
+  let draggedLabel = null;
+
+  el.querySelectorAll('.dd-file').forEach(file => {
+    file.addEventListener('dragstart', e => {
+      draggedLabel = file.dataset.label;
+      file.classList.add('dd-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    file.addEventListener('dragend', () => {
+      draggedLabel = null;
+      file.classList.remove('dd-dragging');
+    });
+  });
+
+  el.querySelectorAll('.dd-folder').forEach(folder => {
+    folder.addEventListener('dragover', e => { e.preventDefault(); folder.classList.add('dd-over'); });
+    folder.addEventListener('dragleave', () => folder.classList.remove('dd-over'));
+    folder.addEventListener('drop', e => {
+      e.preventDefault();
+      folder.classList.remove('dd-over');
+      if (draggedLabel === correctFile.label && folder.dataset.label === correctFolder.label) {
+        completeTab(tab.id);
+      } else {
+        folder.classList.add('dd-wrong');
+        setTimeout(() => folder.classList.remove('dd-wrong'), 500);
+      }
+    });
+  });
+
+  return { el, cleanup: () => {} };
+}
+
+/* ── Password Builder ── */
+function mkPassword(tab) {
+  const ALL_RULES = [
+    { id: 'num',   label: 'contains a number',      test: s => /\d/.test(s) },
+    { id: 'upper', label: 'has an uppercase letter', test: s => /[A-Z]/.test(s) },
+    { id: 'lower', label: 'has a lowercase letter',  test: s => /[a-z]/.test(s) },
+    { id: 'len4',  label: 'is 4+ characters',        test: s => s.length >= 4 },
+    { id: 'len6',  label: 'is 6+ characters',        test: s => s.length >= 6 },
+    { id: 'sym',   label: 'contains ! or ?',         test: s => /[!?]/.test(s) },
+  ];
+
+  const ruleCount = tab.isPanic ? 3 : 2;
+  const rules = shuffle([...ALL_RULES]).slice(0, ruleCount);
+  let pwd = '';
+  let autoTid = null;
+
+  const el = mk('div', 'tab-content');
+  el.style.padding = '10px 10px 8px';
+  el.innerHTML = `
+    <p class="mg-instruction">Type a valid password:</p>
+    <ul class="pwd-rules">
+      ${rules.map(r => `<li class="pwd-rule" data-id="${r.id}">${r.label}</li>`).join('')}
+    </ul>
+    <div class="pwd-display"></div>
+    <div class="type-hint">click to focus</div>`;
+
+  const displayEl = el.querySelector('.pwd-display');
+  const ruleEls   = el.querySelectorAll('.pwd-rule');
+
+  function render() {
+    displayEl.textContent = pwd || '…';
+    ruleEls.forEach(li => {
+      const rule = rules.find(r => r.id === li.dataset.id);
+      li.classList.toggle('pwd-rule-ok', rule && rule.test(pwd));
+    });
+  }
+  render();
+
+  function focus() { setTypeFocus(tab.id); }
+  el.addEventListener('click', focus);
+
+  autoTid = setTimeout(() => {
+    if (activeTypeId === null && !tab.done && !tab.gone) focus();
+  }, 40);
+
+  tab.keyHandler = key => {
+    if (tab.done || tab.gone) return;
+    if (key === 'Backspace') {
+      pwd = pwd.slice(0, -1);
+      render();
+      return;
+    }
+    if (key === 'Enter') {
+      if (rules.every(r => r.test(pwd))) {
+        completeTab(tab.id);
+      } else {
+        displayEl.classList.add('pwd-shake');
+        setTimeout(() => displayEl.classList.remove('pwd-shake'), 350);
+      }
+      return;
+    }
+    if (key.length !== 1 || pwd.length >= 16) return;
+    pwd += key;
+    render();
+    // auto-complete if all rules pass
+    if (rules.every(r => r.test(pwd))) completeTab(tab.id);
+  };
+
+  return {
+    el,
+    cleanup: () => {
+      clearTimeout(autoTid);
+      tab.element?.classList.remove('keyboard-focused');
+      if (activeTypeId === tab.id) {
+        activeTypeId = null;
+        S.tabs.forEach((t, tid) => {
+          if (tid !== tab.id && t.hasKeyboard && !t.done && !t.gone && activeTypeId === null) {
+            setTypeFocus(tid);
+          }
+        });
+      }
+    },
+  };
+}
+
+/* ── Boss Tab ── */
+function mkBoss(tab) {
+  // Boss = click spam 30 times, wide card
+  const goal = 30;
+  let n = 0;
+
+  const el = mk('div', 'tab-content');
+  el.innerHTML = `
+    <p class="mg-instruction">⚠️ <strong>BOSS TAB</strong> — Click <strong>${goal} times!</strong></p>
+    <div class="mg-click-count boss-count">0/${goal}</div>
+    <div class="mg-click-bar"><div class="mg-click-bar-fill" style="width:0%"></div></div>
+    <button class="mg-btn boss-btn">DESTROY!</button>`;
+
+  const countEl = el.querySelector('.boss-count');
+  const fillEl  = el.querySelector('.mg-click-bar-fill');
+
+  el.querySelector('.boss-btn').addEventListener('click', () => {
+    n++;
+    countEl.textContent = `${n}/${goal}`;
+    fillEl.style.width  = `${(n / goal) * 100}%`;
+    if (n >= goal) completeTab(tab.id);
+  });
+
+  return { el, cleanup: () => {} };
+}
+
+function spawnBossTab() {
+  if (!S.running || S.bossAlive) return;
+  S.bossAlive = true;
+
+  const id = S.nextId++;
+  const tab = {
+    id,
+    type:     T.BOSS,
+    inner:    T.BOSS,
+    isPanic:  false,
+    title:    '⚠️ BOSS TAB — Defeat me!',
+    tLimit:   18,
+    deadline: Date.now() + 18000,
+    element:  null,
+    done:     false,
+    gone:     false,
+    cleanup:  null,
+    keyHandler: null,
+    hasKeyboard: false,
+    isBonus:    false,
+    isCritical: false,
+  };
+
+  const card = mk('div', 'tab-card boss-tab');
+  card.id = `tab-${id}`;
+
+  const area = dom.area;
+  const cW = 340, cH = 260;
+  const mx = Math.max(10, (area.offsetWidth  || window.innerWidth)  - cW - 10);
+  const my = Math.max(10, (area.offsetHeight || window.innerHeight - 52) - cH - 10);
+  card.style.left  = rand(10, mx) + 'px';
+  card.style.top   = rand(10, my) + 'px';
+  card.style.width = cW + 'px';
+
+  const header = mk('div', 'tab-header boss-header');
+  header.innerHTML = `
+    <div class="tab-title-row">
+      <div class="tab-favicon" style="background:#c62828"></div>
+      <span class="tab-title" style="color:#c62828;font-weight:800">${tab.title}</span>
+      <div class="tab-close-x">✕</div>
+    </div>
+    <div class="tab-timer-track"><div class="tab-timer-fill"></div></div>`;
+  card.appendChild(header);
+
+  tab.element = card;
+  S.tabs.set(id, tab);
+
+  const game = mkBoss(tab);
+  card.appendChild(game.el);
+  tab.cleanup = game.cleanup;
+
+  makeDraggable(card, header);
+
+  // Pulse the whole game area red
+  dom.area.classList.add('boss-active');
+
+  Object.assign(card.style, {
+    opacity:    '0',
+    transform:  'scale(0.7) translateY(-20px)',
+    transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
+  });
+  area.appendChild(card);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    card.style.opacity   = '1';
+    card.style.transform = 'scale(1) translateY(0)';
+  }));
+
+  setUrl('tab-hoarder://BOSS-TAB-DETECTED', 4000);
+  refreshTabCount();
+}
+
+/* ── Power-up ── */
+function applyPowerup(kind) {
+  const cfg = POWERUP_CONFIG[kind];
+  setUrl(`tab-hoarder://${cfg.label.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`, 3000);
+
+  if (kind === POWERUP.RAM) {
+    S.health = Math.min(MAX_HEALTH, S.health + 1);
+    renderHealth();
+  } else if (kind === POWERUP.FREEZE) {
+    clearTimeout(S.freezeTid);
+    S.spawnMs = Math.min(S.spawnMs * 2, 8000);
+    restartSpawn();
+    S.freezeActive = true;
+    S.freezeTid = setTimeout(() => {
+      S.freezeActive = false;
+      S.spawnMs = Math.max(S.diffCfg.minSpawnMs, S.diffCfg.spawnMs * Math.pow(0.9, S.scaleLevel));
+      restartSpawn();
+    }, 8000);
+  } else if (kind === POWERUP.NUKE) {
+    const toNuke = [];
+    S.tabs.forEach((t, id) => { if (!t.done && !t.gone && t.type !== T.POWERUP) toNuke.push(id); });
+    toNuke.forEach(id => dismissTab(id));
+  } else if (kind === POWERUP.DOUBLE) {
+    clearTimeout(S.doubleScoreTid);
+    S.doubleScoreActive = true;
+    dom.multEl.classList.add('double-score-active');
+    S.doubleScoreTid = setTimeout(() => {
+      S.doubleScoreActive = false;
+      dom.multEl.classList.remove('double-score-active');
+    }, 15000);
+  }
+}
+
+function mkPowerup(tab) {
+  const kind = pick(Object.values(POWERUP));
+  const cfg  = POWERUP_CONFIG[kind];
+
+  const el = mk('div', 'tab-content');
+  el.innerHTML = `
+    <p class="mg-instruction powerup-label" style="color:${cfg.color}">${cfg.label}</p>
+    <p class="powerup-desc">${cfg.desc}</p>
+    <button class="mg-btn powerup-claim-btn" style="background:${cfg.color}">Claim!</button>`;
+
+  el.querySelector('.powerup-claim-btn').addEventListener('click', () => {
+    applyPowerup(kind);
+    completeTab(tab.id);
+  });
+
+  return { el, cleanup: () => {} };
+}
+
 /* ── dispatcher ── */
 function buildGame(type, tab) {
   switch (type) {
@@ -733,12 +1216,16 @@ function buildGame(type, tab) {
     case T.TIMER_HOLD: return mkTimerHold(tab);
     case T.MEMORY:     return mkMemory(tab);
     case T.PRECISION:  return mkPrecision(tab);
-    case T.FAKE:       return mkFake(tab);
     case T.TYPE_IT:    return mkTypeIt(tab);
     case T.MATH:       return mkMath(tab);
     case T.STROOP:     return mkStroop(tab);
     case T.SEQUENCE:   return mkSequence(tab);
     case T.REACTION:   return mkReaction(tab);
+    case T.SLIDER:     return mkSlider(tab);
+    case T.CAPTCHA:    return mkCaptcha(tab);
+    case T.DRAGDROP:   return mkDragDrop(tab);
+    case T.PASSWORD:   return mkPassword(tab);
+    case T.POWERUP:    return mkPowerup(tab);
     default:           return mkClickSpam(tab);
   }
 }
@@ -747,11 +1234,13 @@ function buildGame(type, tab) {
    TAB SPAWNING & MANAGEMENT
    ══════════════════════════════════════════════ */
 
-const BASE_TYPES = [T.CLICK_SPAM, T.TIMER_HOLD, T.MEMORY, T.PRECISION, T.TYPE_IT, T.MATH, T.STROOP, T.SEQUENCE, T.REACTION];
+const BASE_TYPES    = [T.CLICK_SPAM, T.TIMER_HOLD, T.MEMORY, T.PRECISION, T.TYPE_IT, T.MATH, T.STROOP, T.SEQUENCE, T.REACTION, T.SLIDER, T.CAPTCHA, T.DRAGDROP, T.PASSWORD];
+const FAKEABLE_TYPES = BASE_TYPES; // any real tab type can be disguised as a fake
 
 function pickType() {
-  if (S.panicOn && Math.random() < 0.18) return T.PANIC;
-  if (S.fakeOn  && Math.random() < 0.15) return T.FAKE;
+  if (S.panicOn  && Math.random() < 0.18) return T.PANIC;
+  if (S.fakeOn   && Math.random() < 0.15) return T.FAKE;
+  if (S.powerupOn && Math.random() < 0.08) return T.POWERUP;
   return pick(BASE_TYPES);
 }
 
@@ -760,9 +1249,14 @@ function spawnTab() {
 
   const type    = pickType();
   const isPanic = type === T.PANIC;
-  const inner   = isPanic ? pick(BASE_TYPES) : type;
-  const gameT   = isPanic ? inner : type;
-  const tLimit  = isPanic ? PANIC_TIME : TIME_LIMIT[type];
+  const isFake  = type === T.FAKE;
+  const inner   = isPanic ? pick(BASE_TYPES)
+                : isFake  ? pick(FAKEABLE_TYPES)
+                : type;
+  const gameT   = (isPanic || isFake) ? inner : type;
+  const tLimit  = isPanic ? getPanicTime(inner)
+                : isFake  ? TIME_LIMIT[inner]
+                : TIME_LIMIT[type];
   const id      = S.nextId++;
 
   const tab = {
@@ -775,13 +1269,14 @@ function spawnTab() {
     gone:        false,
     cleanup:     null,
     keyHandler:  null,
-    hasKeyboard: gameT === T.TYPE_IT,
+    hasKeyboard: gameT === T.TYPE_IT || gameT === T.PASSWORD,
     isBonus:     false,
     isCritical:  false,
+    revealed:    false,
   };
 
-  // Roll bonus / critical (mutually exclusive, not on panic/fake)
-  if (!isPanic && type !== T.FAKE) {
+  // Roll bonus / critical (mutually exclusive, not on panic/fake/powerup)
+  if (!isPanic && type !== T.FAKE && type !== T.POWERUP) {
     if (S.bonusOn && Math.random() < 0.12) {
       tab.isBonus = true;
     } else if (S.criticalOn && Math.random() < 0.15) {
@@ -791,9 +1286,10 @@ function spawnTab() {
 
   /* build card */
   let cardClass = 'tab-card';
-  if (isPanic)        cardClass += ' panic';
-  if (tab.isBonus)    cardClass += ' bonus-tab';
-  if (tab.isCritical) cardClass += ' critical-tab';
+  if (isPanic)           cardClass += ' panic';
+  if (tab.isBonus)       cardClass += ' bonus-tab';
+  if (tab.isCritical)    cardClass += ' critical-tab';
+  if (type === T.POWERUP) cardClass += ' powerup-tab';
   const card = mk('div', cardClass);
   card.id = `tab-${id}`;
 
@@ -845,16 +1341,6 @@ function spawnTab() {
   card.appendChild(game.el);
   tab.cleanup = game.cleanup;
 
-  // Fake tabs have a functional close button
-  if (type === T.FAKE) {
-    const closeBtn = header.querySelector('.tab-close-x');
-    closeBtn.style.cssText = 'cursor:pointer;background:#e57373;color:#fff';
-    closeBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      dismissTab(id);
-    });
-  }
-
   makeDraggable(card, header);
 
   /* spawn animation */
@@ -873,26 +1359,77 @@ function spawnTab() {
   refreshTabCount();
 }
 
+function revealFake(tab) {
+  if (tab.revealed) return;
+  tab.revealed = true;
+
+  const card = tab.element;
+  if (!card) return;
+
+  card.classList.add('fake-penalty');
+  const warn = mk('div', 'fake-warning');
+  warn.textContent = 'FAKE TAB! 🙈';
+  card.appendChild(warn);
+
+  setTimeout(() => {
+    warn.remove();
+    card.classList.remove('fake-penalty');
+
+    // Enable the close button
+    const closeBtn = card.querySelector('.tab-close-x');
+    if (closeBtn) {
+      closeBtn.style.cssText = 'cursor:pointer;background:#e57373;color:#fff;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0';
+      closeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        dismissTab(tab.id);
+      });
+    }
+  }, 900);
+}
+
 function completeTab(id) {
   const tab = S.tabs.get(id);
   if (!tab || tab.done || tab.gone) return;
+
+  // Intercept fake tabs — reveal instead of completing
+  if (tab.type === T.FAKE) {
+    revealFake(tab);
+    return;
+  }
   tab.done = true;
   tab.cleanup?.();
 
   /* scoring */
   const prevMult  = S.mult;
-  const bonusMult = tab.isBonus ? 2 : 1;
+  const bonusMult       = tab.isBonus ? 2 : 1;
+  const doubleScoreMult = S.doubleScoreActive ? 2 : 1;
+  const isBoss          = tab.type === T.BOSS;
+
+  if (isBoss) {
+    S.bossAlive = false;
+    dom.area.classList.remove('boss-active');
+  }
+
   S.streak++;
+  if (S.streak > S.bestStreak) S.bestStreak = S.streak;
   S.mult  = getMult(S.streak);
-  const points = Math.round(100 * S.mult * bonusMult);
+  if (tab.type !== T.POWERUP && tab.type !== T.BOSS) {
+    S.tabsDone++;
+    const trackType = tab.inner ?? tab.type;
+    S.typeCounts[trackType] = (S.typeCounts[trackType] || 0) + 1;
+  }
+  const points = tab.type === T.POWERUP ? 0
+               : isBoss                 ? Math.round(500 * doubleScoreMult)
+               : Math.round(100 * S.mult * bonusMult * doubleScoreMult);
   S.score += points;
   refreshHUD(S.mult > prevMult);
 
   /* score popup */
   spawnScorePopup(tab.element, points, tab.isBonus || S.mult > 1);
 
-  /* green flash, then fly out */
+  /* green flash + burst, then fly out */
   const c = tab.element;
+  spawnCompletionBurst(c);
   c.style.pointerEvents = 'none';
   c.style.transition = 'none';
   c.style.boxShadow  = '0 0 0 3px #4caf50, 0 8px 28px rgba(76,175,80,.6)';
@@ -914,10 +1451,15 @@ function expireTab(id) {
 
   S.streak = 0;
   S.mult   = 1;
+  if (tab.type !== T.POWERUP && tab.type !== T.BOSS) S.tabsMissed++;
+  if (tab.type === T.BOSS) {
+    S.bossAlive = false;
+    dom.area.classList.remove('boss-active');
+  }
   refreshHUD(false);
 
-  // Bonus tabs don't cost health when missed
-  if (!tab.isBonus) {
+  // Bonus, powerup, and boss tabs don't cost health when missed
+  if (!tab.isBonus && tab.type !== T.POWERUP && tab.type !== T.BOSS) {
     loseHealth();
     // Critical tabs deal double damage
     if (tab.isCritical) loseHealth();
@@ -943,6 +1485,14 @@ function dismissTab(id) {
   if (!tab || tab.done || tab.gone) return;
   tab.done = true;
   tab.cleanup?.();
+
+  // Reward for correctly closing a revealed fake tab
+  if (tab.type === T.FAKE && tab.revealed) {
+    const points = Math.round(50 * S.mult);
+    S.score += points;
+    refreshHUD(false);
+    spawnScorePopup(tab.element, points, false);
+  }
 
   const c = tab.element;
   c.style.pointerEvents = 'none';
@@ -989,6 +1539,14 @@ function refreshHUD(bump = false) {
   dom.scoreEl.textContent = S.score.toLocaleString();
   dom.multEl.textContent  = S.mult > 1 ? `${S.mult}×` : '';
 
+  // Streak fire indicator
+  if (S.streak >= 3) {
+    const fires = S.streak >= 12 ? '🔥🔥🔥' : S.streak >= 6 ? '🔥🔥' : '🔥';
+    dom.streakEl.textContent = `${fires} ${S.streak}`;
+  } else {
+    dom.streakEl.textContent = '';
+  }
+
   if (bump) {
     dom.multEl.classList.remove('bump');
     requestAnimationFrame(() => dom.multEl.classList.add('bump'));
@@ -1034,26 +1592,37 @@ function clockTick() {
 
   const t = S.elapsed;
 
-  /* spawn rate +10% every 30s */
-  const lvl = Math.floor(t / 30);
+  const cfg = S.diffCfg;
+
+  /* spawn rate +10% every scaleInterval seconds */
+  const lvl = Math.floor(t / cfg.scaleInterval);
   if (lvl > S.scaleLevel) {
     S.scaleLevel = lvl;
-    S.spawnMs    = Math.max(800, S.spawnMs * 0.9);
+    S.spawnMs    = Math.max(cfg.minSpawnMs, S.spawnMs * 0.9);
     restartSpawn();
-    if (t === 30) setUrl('tab-hoarder://speed-increasing', 3500);
+    if (lvl === 1) setUrl('tab-hoarder://speed-increasing', 3500);
   }
 
-  if (t >= 60  && !S.fakeOn)   {
+  if (t >= 30 && !S.powerupOn) {
+    S.powerupOn = true;
+  }
+
+  // Boss tab every 60s starting at 60s
+  if (t >= 60 && t % 60 === 0 && S.running) {
+    spawnBossTab();
+  }
+
+  if (t >= cfg.fakeAt  && !S.fakeOn)   {
     S.fakeOn  = true;
     S.bonusOn = true;
     setUrl('tab-hoarder://fake-tabs-incoming', 3500);
   }
-  if (t >= 120 && !S.panicOn)  {
+  if (t >= cfg.panicAt && !S.panicOn)  {
     S.panicOn     = true;
     S.criticalOn  = true;
     setUrl('tab-hoarder://PANIC', 3500);
   }
-  if (t >= 180 && !S.doubleOn) {
+  if (t >= cfg.doubleAt && !S.doubleOn) {
     S.doubleOn = true;
     restartSpawn();
     setUrl('tab-hoarder://system-overload', 3500);
@@ -1086,6 +1655,7 @@ function startGame() {
   S.startTime = Date.now();
 
   dom.area.innerHTML = '';
+  dom.area.classList.remove('boss-active');
   dom.startScreen.classList.add('hidden');
   dom.crashScreen.classList.add('hidden');
   dom.urlBar.classList.remove('url-toast');
@@ -1108,6 +1678,7 @@ function endGame() {
   clearInterval(S.tickTid);
   clearInterval(S.clockTid);
   S.tabs.forEach(t => t.cleanup?.());
+  dom.area.classList.remove('boss-active');
 
   const timeStr  = fmt(S.elapsed);
   const isRecord = saveBest(S.score, S.elapsed);
@@ -1120,7 +1691,28 @@ function endGame() {
   dom.bestCrashEl.textContent = best.score.toLocaleString();
   dom.newRecordEl.classList.toggle('hidden', !isRecord);
 
-  S.shareMsg = `I survived ${timeStr} in Tab Hoarder 🖥️💀 — beat that: [url]`;
+  // run stats
+  dom.statDoneEl.textContent   = S.tabsDone;
+  dom.statMissedEl.textContent = S.tabsMissed;
+  dom.statStreakEl.textContent  = S.bestStreak;
+
+  const TYPE_LABELS = {
+    [T.CLICK_SPAM]: 'Click Spam', [T.TIMER_HOLD]: 'Timer Hold',
+    [T.MEMORY]: 'Memory',         [T.PRECISION]:  'Precision',
+    [T.TYPE_IT]: 'Type It',       [T.MATH]:       'Math',
+    [T.STROOP]: 'Stroop',         [T.SEQUENCE]:   'Sequence',
+    [T.REACTION]: 'Reaction',
+  };
+  const entries = Object.entries(S.typeCounts);
+  if (entries.length > 0) {
+    const fav = entries.reduce((a, b) => b[1] > a[1] ? b : a);
+    dom.statFavEl.textContent = TYPE_LABELS[fav[0]] || fav[0];
+    dom.statFavRowEl.classList.remove('hidden');
+  } else {
+    dom.statFavRowEl.classList.add('hidden');
+  }
+
+  S.shareMsg = `I survived ${timeStr} in Tab Hoarder 🖥️💀 (${S.tabsDone} tabs done) — beat that: [url]`;
   dom.sharePreviewEl.textContent = S.shareMsg;
 
   dom.crashScreen.classList.remove('hidden');
@@ -1150,6 +1742,12 @@ document.addEventListener('DOMContentLoaded', () => {
     startBtn:       $('start-btn'),
     restartBtn:     $('restart-btn'),
     startBestEl:    $('start-best-score'),
+    statDoneEl:     $('stat-done'),
+    statMissedEl:   $('stat-missed'),
+    statStreakEl:   $('stat-streak'),
+    statFavEl:      $('stat-fav'),
+    statFavRowEl:   $('stat-fav-row'),
+    streakEl:       $('streak-display'),
   };
 
   S = newState();
@@ -1162,15 +1760,24 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.startBestEl.classList.remove('hidden');
   }
 
-  // Global keyboard handler for Type It tabs
+  // Global keyboard handler for Type It / Password tabs
   document.addEventListener('keydown', e => {
     if (activeTypeId === null) return;
     const tab = S.tabs.get(activeTypeId);
     if (!tab || !tab.keyHandler || tab.done || tab.gone) { activeTypeId = null; return; }
-    if (e.key.length === 1 || e.key === 'Backspace') {
+    if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Enter') {
       e.preventDefault();
       tab.keyHandler(e.key);
     }
+  });
+
+  // difficulty picker
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      chosenDiff = btn.dataset.diff;
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.toggle('active', b === btn));
+      $('diff-desc').textContent = DIFF_DESC[chosenDiff];
+    });
   });
 
   dom.startBtn.addEventListener('click',   startGame);
