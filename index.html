@@ -23,6 +23,8 @@
 
     <div id="url-bar">tab-hoarder://survive</div>
 
+    <button id="dev-toggle" title="Dev Tools">🛠</button>
+
     <div id="hud-right">
       <span id="tab-count"></span>
       <span id="streak-display"></span>
@@ -42,20 +44,28 @@
       <p>Tabs keep spawning. Complete each mini-game before it expires.<br>
          Lose all 5 RAM bars and your browser crashes.</p>
 
-      <div id="type-hints">
-        <div><strong>Click Spam</strong> — click 15× fast</div>
-        <div><strong>Timer Hold</strong> — hold exactly 3s</div>
-        <div><strong>Memory</strong> — repeat the sequence</div>
-        <div><strong>Precision</strong> — hit the moving target</div>
-        <div><strong>Type It</strong> — type the word shown</div>
-        <div><strong>Math</strong> — pick the right answer</div>
-        <div><strong>Stroop</strong> — click the text's ink color</div>
-        <div><strong>Sequence</strong> — click 1 → 5 in order</div>
-        <div><strong>Reaction</strong> — wait, then click fast</div>
-        <div><strong>Slider</strong> — stop in the green zone</div>
-        <div><strong>Captcha</strong> — select matching icons</div>
-        <div><strong>Drag &amp; Drop</strong> — file to the right folder</div>
-        <div><strong>Password</strong> — build a valid password</div>
+      <div id="type-hints-section">
+        <button id="type-hints-toggle">
+          <span>15 mini-games — what to expect</span>
+          <span class="toggle-chevron">▸</span>
+        </button>
+        <div id="type-hints">
+          <div class="game-card" data-type="clickSpam"  style="--cc:#ef5350"><div class="gc-icon">🖱️</div><div class="gc-name">Click Spam</div><div class="gc-desc">Click 15× fast</div></div>
+          <div class="game-card" data-type="timerHold"  style="--cc:#ffa726"><div class="gc-icon">⏱️</div><div class="gc-name">Timer Hold</div><div class="gc-desc">Hold exactly 3s</div></div>
+          <div class="game-card" data-type="memory"     style="--cc:#ab47bc"><div class="gc-icon">🧠</div><div class="gc-name">Memory</div><div class="gc-desc">Repeat the sequence</div></div>
+          <div class="game-card" data-type="precision"  style="--cc:#42a5f5"><div class="gc-icon">🎯</div><div class="gc-name">Precision</div><div class="gc-desc">Hit the moving target</div></div>
+          <div class="game-card" data-type="typeIt"     style="--cc:#26a69a"><div class="gc-icon">⌨️</div><div class="gc-name">Type It</div><div class="gc-desc">Type the word shown</div></div>
+          <div class="game-card" data-type="math"       style="--cc:#66bb6a"><div class="gc-icon">➗</div><div class="gc-name">Math</div><div class="gc-desc">Pick the right answer</div></div>
+          <div class="game-card" data-type="stroop"     style="--cc:#ec407a"><div class="gc-icon">🎨</div><div class="gc-name">Stroop</div><div class="gc-desc">Click the ink color</div></div>
+          <div class="game-card" data-type="sequence"   style="--cc:#5c6bc0"><div class="gc-icon">🔢</div><div class="gc-name">Sequence</div><div class="gc-desc">Click 1 → 5 in order</div></div>
+          <div class="game-card" data-type="reaction"   style="--cc:#ffca28"><div class="gc-icon">⚡</div><div class="gc-name">Reaction</div><div class="gc-desc">Wait, then click fast</div></div>
+          <div class="game-card" data-type="slider"     style="--cc:#26c6da"><div class="gc-icon">🎚️</div><div class="gc-name">Slider</div><div class="gc-desc">Stop in the green zone</div></div>
+          <div class="game-card" data-type="captcha"    style="--cc:#78909c"><div class="gc-icon">🤖</div><div class="gc-name">Captcha</div><div class="gc-desc">Select matching icons</div></div>
+          <div class="game-card" data-type="dragDrop"   style="--cc:#ff7043"><div class="gc-icon">📂</div><div class="gc-name">Drag &amp; Drop</div><div class="gc-desc">File to the right folder</div></div>
+          <div class="game-card" data-type="password"   style="--cc:#4db6ac"><div class="gc-icon">🔐</div><div class="gc-name">Password</div><div class="gc-desc">Build a valid password</div></div>
+          <div class="game-card" data-type="oddOne"     style="--cc:#ce93d8"><div class="gc-icon">👁️</div><div class="gc-name">Odd One Out</div><div class="gc-desc">Spot the different icon</div></div>
+          <div class="game-card" data-type="knob"       style="--cc:#4dd0e1"><div class="gc-icon">🔊</div><div class="gc-name">Volume Knob</div><div class="gc-desc">Turn to the green zone</div></div>
+        </div>
       </div>
 
       <div id="fake-hint">
@@ -63,15 +73,34 @@
         Any tab can be fake — disguised as a real mini-game. Try to complete it to expose it, then hit <strong>✕</strong> to close it for bonus points. Let it expire and you lose a RAM bar.
       </div>
 
-      <div id="difficulty-picker">
-        <button class="diff-btn" data-diff="chill">Chill</button>
-        <button class="diff-btn active" data-diff="normal">Normal</button>
-        <button class="diff-btn" data-diff="chaos">Chaos</button>
+      <div class="start-divider"></div>
+
+      <div id="mode-picker">
+        <button class="mode-btn active" data-mode="endless">Endless</button>
+        <button class="mode-btn" data-mode="waves">Waves</button>
+        <button class="mode-btn" data-mode="daily">Daily</button>
       </div>
-      <div id="diff-desc">Moderate speed, all mechanics unlock over time.</div>
+      <div id="mode-desc">Survive as long as possible. No respite.</div>
+
+      <div id="mode-diff-row">
+        <div id="difficulty-picker">
+          <button class="diff-btn" data-diff="chill">Chill</button>
+          <button class="diff-btn active" data-diff="normal">Normal</button>
+          <button class="diff-btn" data-diff="chaos">Chaos</button>
+        </div>
+        <div id="diff-desc">Moderate speed, all mechanics unlock over time.</div>
+      </div>
+
+      <div id="modifier-row">
+        <label class="modifier-label">
+          <input type="checkbox" id="no-powerups-toggle">
+          No Powerups
+        </label>
+      </div>
 
       <div id="start-best-score" class="hidden"></div>
       <button id="start-btn">Start Game</button>
+
     </div>
   </div>
 
@@ -85,16 +114,95 @@
       <div id="final-stats">
         <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
         <div>Final score &nbsp;<span id="final-score">0</span></div>
-        <div>Best score &nbsp;<span id="best-crash-score">0</span></div>
       </div>
+      <div id="leaderboard"></div>
       <div id="run-stats">
         <div><span id="stat-done">0</span> completed &nbsp;·&nbsp; <span id="stat-missed">0</span> missed</div>
         <div>Best streak &nbsp;<span id="stat-streak">0</span></div>
         <div id="stat-fav-row">Favorite &nbsp;<span id="stat-fav">—</span></div>
       </div>
+      <div id="achievements-earned" class="hidden"></div>
       <p id="share-preview"></p>
       <button id="copy-btn">📋 Copy &amp; Share</button>
       <button id="restart-btn">Restart</button>
+      <button id="title-btn">Back to Title</button>
+    </div>
+  </div>
+
+  <!-- Dev Tools Panel -->
+  <div id="dev-panel" class="hidden">
+    <div class="dev-header">
+      <span>🛠 Dev Tools</span>
+      <button id="dev-close">✕</button>
+    </div>
+
+    <div class="dev-section">
+      <div class="dev-label">Health</div>
+      <div class="dev-row">
+        <button class="dev-h-btn" data-h="1">1</button>
+        <button class="dev-h-btn" data-h="2">2</button>
+        <button class="dev-h-btn" data-h="3">3</button>
+        <button class="dev-h-btn" data-h="4">4</button>
+        <button class="dev-h-btn" data-h="5">5</button>
+      </div>
+      <label class="dev-check"><input type="checkbox" id="dev-invincible"> Invincible</label>
+    </div>
+
+    <div class="dev-section">
+      <div class="dev-label">Spawn Tab</div>
+      <div class="dev-row">
+        <select id="dev-type-select">
+          <option value="clickSpam">Click Spam</option>
+          <option value="timerHold">Timer Hold</option>
+          <option value="memory">Memory</option>
+          <option value="precision">Precision</option>
+          <option value="typeIt">Type It</option>
+          <option value="math">Math</option>
+          <option value="stroop">Stroop</option>
+          <option value="sequence">Sequence</option>
+          <option value="reaction">Reaction</option>
+          <option value="slider">Slider</option>
+          <option value="captcha">Captcha</option>
+          <option value="dragDrop">Drag &amp; Drop</option>
+          <option value="password">Password</option>
+          <option value="oddOne">Odd One Out</option>
+          <option value="knob">Volume Knob</option>
+          <option value="panic">Panic</option>
+          <option value="fake">Fake</option>
+          <option value="powerup">Powerup</option>
+        </select>
+        <button id="dev-spawn-btn">Spawn</button>
+      </div>
+    </div>
+
+    <div class="dev-section">
+      <div class="dev-label">Phases</div>
+      <div class="dev-phases">
+        <button class="dev-phase" data-flag="fakeOn">Fake</button>
+        <button class="dev-phase" data-flag="panicOn">Panic</button>
+        <button class="dev-phase" data-flag="bounceOn">Bounce</button>
+        <button class="dev-phase" data-flag="linkedOn">Linked</button>
+        <button class="dev-phase" data-flag="doubleOn">Double</button>
+        <button class="dev-phase" data-flag="chaosPlus">Chaos+</button>
+      </div>
+    </div>
+
+    <div class="dev-section">
+      <div class="dev-label">Actions</div>
+      <div class="dev-actions">
+        <button class="dev-action-btn" id="dev-expire-all">Expire All</button>
+        <button class="dev-action-btn" id="dev-complete-all">Complete All</button>
+        <button class="dev-action-btn" id="dev-spawn-boss">Spawn Boss</button>
+        <button class="dev-action-btn dev-danger" id="dev-end-game">End Game</button>
+      </div>
+    </div>
+
+    <div class="dev-section">
+      <div class="dev-label">Data</div>
+      <div class="dev-actions">
+        <button class="dev-action-btn dev-danger" id="dev-clear-lb">Clear Leaderboard</button>
+        <button class="dev-action-btn dev-danger" id="dev-clear-ach">Reset Achievements</button>
+      </div>
     </div>
   </div>
 
