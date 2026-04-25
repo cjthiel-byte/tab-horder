@@ -5,6 +5,7 @@
 /* ── constants ── */
 const MAX_HEALTH = 5;
 const LS_KEY     = 'tabHoarder_best';
+const DAILY_KEY  = 'tabHoarder_daily';
 
 const TITLES = [
   'URGENT!!!', 'You forgot this', "Don't ignore me",
@@ -15,17 +16,25 @@ const TITLES = [
 const SYMBOLS = ['★', '●', '▲', '■', '♦'];
 
 const POWERUP = {
-  RAM:    'ram',
-  FREEZE: 'freeze',
-  NUKE:   'nuke',
-  DOUBLE: 'double',
+  RAM:        'ram',
+  FREEZE:     'freeze',
+  NUKE:       'nuke',
+  DOUBLE:     'double',
+  TIME_WARP:  'timeWarp',
+  SHIELD:     'shield',
+  AUTO_CLOSE: 'autoClose',
+  SCRAMBLE:   'scramble',
 };
 
 const POWERUP_CONFIG = {
-  [POWERUP.RAM]:    { label: '💉 RAM Restore',    desc: 'Recover 1 RAM bar',         color: '#4caf50' },
-  [POWERUP.FREEZE]: { label: '❄️ Time Freeze',    desc: 'Slow spawns for 8s',         color: '#29b6f6' },
-  [POWERUP.NUKE]:   { label: '💣 Tab Nuke',       desc: 'Clear all open tabs',        color: '#ff7043' },
-  [POWERUP.DOUBLE]: { label: '⚡ Double Score',   desc: '2× points for 15s',          color: '#ffd740' },
+  [POWERUP.RAM]:        { label: '💉 RAM Restore',    desc: 'Recover 1 RAM bar',             color: '#4caf50' },
+  [POWERUP.FREEZE]:     { label: '❄️ Time Freeze',    desc: 'Slow spawns for 8s',             color: '#29b6f6' },
+  [POWERUP.NUKE]:       { label: '💣 Tab Nuke',       desc: 'Clear all open tabs',            color: '#ff7043' },
+  [POWERUP.DOUBLE]:     { label: '⚡ Double Score',   desc: '2× points for 15s',              color: '#ffd740' },
+  [POWERUP.TIME_WARP]:  { label: '⏱ Time Warp',      desc: 'Tab timers slow to 50% for 8s',  color: '#7c4dff' },
+  [POWERUP.SHIELD]:     { label: '🛡 Shield',          desc: 'Next expiry deals no damage',    color: '#42a5f5' },
+  [POWERUP.AUTO_CLOSE]: { label: '✨ Auto-Close',     desc: 'Instantly closes one random tab', color: '#ff7043' },
+  [POWERUP.SCRAMBLE]:   { label: '🌀 Scramble',       desc: 'Shuffles all tab positions',     color: '#ec407a' },
 };
 
 const T = {
@@ -46,6 +55,8 @@ const T = {
   PASSWORD:   'password',
   POWERUP:    'powerup',
   BOSS:       'boss',
+  ODD_ONE:    'oddOne',
+  KNOB:       'knob',
 };
 
 const TIME_LIMIT = {
@@ -64,6 +75,8 @@ const TIME_LIMIT = {
   [T.DRAGDROP]:   8,
   [T.PASSWORD]:   10,
   [T.POWERUP]:    12,
+  [T.ODD_ONE]:    7,
+  [T.KNOB]:       8,
 };
 
 // Per-type panic overrides (defaults to PANIC_TIME if not listed)
@@ -96,6 +109,8 @@ const FAVICON_COLOR = {
   [T.DRAGDROP]:   '#8d6e63',
   [T.PASSWORD]:   '#26a69a',
   [T.POWERUP]:    '#4caf50',
+  [T.ODD_ONE]:    '#ff6f00',
+  [T.KNOB]:       '#5e35b1',
 };
 
 const STROOP_COLORS = [
@@ -110,11 +125,20 @@ const STROOP_COLORS = [
 const WORDS_NORMAL = ['CLOSE', 'CLEAR', 'VIRUS', 'CRASH', 'ERROR', 'PIXEL', 'CLICK', 'BYTES', 'QUERY', 'CACHE', 'LOGIN', 'BLOCK'];
 const WORDS_PANIC  = ['TIMEOUT', 'NETWORK', 'PROCESS', 'PROGRAM', 'BROWSER', 'DIGITAL'];
 
+const ODD_CATEGORIES = [
+  ['🍎', '🍊', '🍋', '🍇', '🍓', '🍑', '🍒', '🍌'],
+  ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼'],
+  ['🚗', '🚕', '🚌', '🏎', '🚓', '🚑', '🚒', '🚐'],
+  ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🥏'],
+  ['🌲', '🌳', '🌴', '🌵', '🌾', '🍀', '🌿', '🎄'],
+  ['✏️', '📏', '📐', '📎', '🔑', '✂️', '🔧', '🔨'],
+];
+
 /* ── difficulty ── */
 const DIFF = {
-  chill:  { spawnMs: 6000, minSpawnMs: 1200, scaleInterval: 45, fakeAt: 90,  panicAt: 180, doubleAt: 270 },
-  normal: { spawnMs: 4000, minSpawnMs: 800,  scaleInterval: 30, fakeAt: 60,  panicAt: 120, doubleAt: 180 },
-  chaos:  { spawnMs: 2500, minSpawnMs: 600,  scaleInterval: 20, fakeAt: 30,  panicAt: 60,  doubleAt: 120 },
+  chill:  { spawnMs: 6000, minSpawnMs: 1200, scaleInterval: 45, fakeAt: 90,  panicAt: 180, doubleAt: 270, linkedAt: 60,  bounceAt: 150, chaosPlusAt: 360 },
+  normal: { spawnMs: 4000, minSpawnMs: 800,  scaleInterval: 30, fakeAt: 60,  panicAt: 120, doubleAt: 180, linkedAt: 40,  bounceAt: 90,  chaosPlusAt: 240 },
+  chaos:  { spawnMs: 2500, minSpawnMs: 600,  scaleInterval: 20, fakeAt: 30,  panicAt: 60,  doubleAt: 120, linkedAt: 20,  bounceAt: 50,  chaosPlusAt: 150 },
 };
 const DIFF_DESC = {
   chill:  'Slower spawns, longer ramp-up. Good for learning.',
@@ -122,20 +146,150 @@ const DIFF_DESC = {
   chaos:  'Fast from the start. Panic mode hits early. Good luck.',
 };
 
-let chosenDiff = 'normal';
+let chosenDiff   = 'normal';
+let chosenMode   = 'endless'; // 'endless' | 'waves' | 'daily'
+let noPowerups   = false;
+let rng          = () => Math.random();
+let devInvincible = false;
 
-/* ── high score ── */
-function loadBest() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { score: 0, time: 0 }; }
-  catch { return { score: 0, time: 0 }; }
+/* ── seeded RNG (mulberry32) for Daily Challenge ── */
+function makeMulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
 }
-function saveBest(score, time) {
-  const prev = loadBest();
-  if (score > prev.score) {
-    localStorage.setItem(LS_KEY, JSON.stringify({ score, time }));
+
+function getDailySeed() {
+  const d = new Date();
+  return parseInt(`${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`);
+}
+
+function loadDailyBest() {
+  try { return JSON.parse(localStorage.getItem(DAILY_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function saveDailyBest(score, time) {
+  const rec = loadDailyBest();
+  const key = String(getDailySeed());
+  if (!rec[key] || score > rec[key].score) {
+    rec[key] = { score, time };
+    localStorage.setItem(DAILY_KEY, JSON.stringify(rec));
     return true;
   }
   return false;
+}
+
+function getDailyBestToday() {
+  const rec = loadDailyBest();
+  return rec[String(getDailySeed())] || null;
+}
+
+/* ── leaderboard (per-difficulty, top 5) ── */
+function loadLeaderboard() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { chill: [], normal: [], chaos: [] }; }
+  catch { return { chill: [], normal: [], chaos: [] }; }
+}
+
+function addToLeaderboard(score, time) {
+  const board  = loadLeaderboard();
+  const diff   = chosenDiff;
+  if (!board[diff]) board[diff] = [];
+  const oldTop = board[diff][0]?.score || 0;
+  board[diff].push({ score, time, date: Date.now() });
+  board[diff].sort((a, b) => b.score - a.score);
+  board[diff] = board[diff].slice(0, 5);
+  localStorage.setItem(LS_KEY, JSON.stringify(board));
+  return score > oldTop;
+}
+
+function updateStartBest() {
+  if (chosenMode === 'daily') { updateStartDailyBest(); return; }
+  const board   = loadLeaderboard();
+  const entries = board[chosenDiff] || [];
+  if (entries.length > 0) {
+    const top = entries[0];
+    dom.startBestEl.textContent = `Best (${chosenDiff}): ${top.score.toLocaleString()} — ${fmt(top.time)}`;
+    dom.startBestEl.classList.remove('hidden');
+  } else {
+    dom.startBestEl.classList.add('hidden');
+  }
+}
+
+function updateStartDailyBest() {
+  const best = getDailyBestToday();
+  if (best) {
+    dom.startBestEl.textContent = `Today's best: ${best.score.toLocaleString()} — ${fmt(best.time)}`;
+    dom.startBestEl.classList.remove('hidden');
+  } else {
+    dom.startBestEl.textContent = "No score today yet — play now!";
+    dom.startBestEl.classList.remove('hidden');
+  }
+}
+
+function renderLeaderboard() {
+  const board   = loadLeaderboard();
+  const entries = board[chosenDiff] ?? [];
+  const label   = chosenDiff.charAt(0).toUpperCase() + chosenDiff.slice(1);
+  if (entries.length === 0) {
+    dom.leaderboardEl.innerHTML = `<div class="lb-title">${label} — No runs yet</div>`;
+    return;
+  }
+  dom.leaderboardEl.innerHTML = `
+    <div class="lb-title">${label} Leaderboard</div>
+    ${entries.map((e, i) => `
+      <div class="lb-row${e.score === S.score && e.time === S.elapsed ? ' lb-current' : ''}">
+        <span class="lb-rank">#${i + 1}</span>
+        <span class="lb-score">${e.score.toLocaleString()}</span>
+        <span class="lb-time">${fmt(e.time)}</span>
+      </div>`).join('')}`;
+}
+
+/* ── achievements ── */
+const ACHIEV_KEY = 'tabHoarder_achievements';
+
+const ACHIEVEMENTS = [
+  { id: 'streak10',    icon: '🔥', label: 'On Fire',        check: S      => S.bestStreak >= 10 },
+  { id: 'streak20',    icon: '🌋', label: 'Unstoppable',    check: S      => S.bestStreak >= 20 },
+  { id: 'survive3',    icon: '⏱',  label: 'Survivor',       check: S      => S.elapsed >= 180 },
+  { id: 'survive5',    icon: '🏅', label: 'Legend',          check: S      => S.elapsed >= 300 },
+  { id: 'flawless',    icon: '✨', label: 'Flawless',        check: S      => S.tabsMissed === 0 && S.tabsDone >= 10 },
+  { id: 'century',     icon: '💯', label: 'Century',         check: S      => S.tabsDone >= 100 },
+  { id: 'score10k',    icon: '🏆', label: 'High Scorer',    check: S      => S.score >= 10000 },
+  { id: 'score50k',    icon: '👑', label: 'Elite',           check: S      => S.score >= 50000 },
+  { id: 'linked5',     icon: '🔗', label: 'Linked Up',       check: S      => S.linkCombos >= 5 },
+  { id: 'chaosmaster', icon: '💀', label: 'Chaos Master',   check: (S, d) => S.elapsed >= 180 && d === 'chaos' },
+];
+
+function checkAchievements() {
+  const earned = new Set();
+  ACHIEVEMENTS.forEach(a => { if (a.check(S, chosenDiff)) earned.add(a.id); });
+  return earned;
+}
+
+function loadUnlocked() {
+  try { return new Set(JSON.parse(localStorage.getItem(ACHIEV_KEY)) || []); }
+  catch { return new Set(); }
+}
+
+function renderAchievements(newlyEarned) {
+  const allUnlocked = loadUnlocked();
+  newlyEarned.forEach(id => allUnlocked.add(id));
+  localStorage.setItem(ACHIEV_KEY, JSON.stringify([...allUnlocked]));
+
+  if (allUnlocked.size === 0) { dom.achievementsEl.classList.add('hidden'); return; }
+  dom.achievementsEl.classList.remove('hidden');
+
+  const badges = ACHIEVEMENTS
+    .filter(a => allUnlocked.has(a.id))
+    .map(a => `<div class="ach-badge${newlyEarned.has(a.id) ? ' ach-new' : ''}">
+      <span class="ach-icon">${a.icon}</span>
+      <span class="ach-label">${a.label}</span>
+    </div>`).join('');
+  dom.achievementsEl.innerHTML = `<div class="lb-title">Achievements</div><div class="ach-grid">${badges}</div>`;
 }
 
 /* ── state ── */
@@ -175,6 +329,18 @@ function newState() {
     doubleScoreTid: null,
     freezeTid: null,
     bossAlive: false,
+    linkedOn:      false,
+    bounceOn:      false,
+    linkGroups:    new Map(),
+    nextLinkGroup: 0,
+    timeWarpActive: false,
+    timeWarpTid:    null,
+    shieldActive:   false,
+    linkCombos:     0,
+    m60: false, m120: false, m180: false, m240: false, m300: false,
+    chaosPlus:      false,
+    waveNum:        1,
+    waveBreather:   false,
   };
 }
 
@@ -189,8 +355,8 @@ function mk(tag, cls) {
   return el;
 }
 
-const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
-const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const rand = (a, b) => Math.floor(rng() * (b - a + 1)) + a;
+const pick = arr => arr[Math.floor(rng() * arr.length)];
 const fmt  = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 function shuffle(arr) {
@@ -286,6 +452,8 @@ function refreshTabCount() {
 
 let drag = null;
 let activeTypeId = null; // which type-it tab currently receives keyboard input
+let faviconCanvas = null;
+let faviconLink   = null;
 
 function setTypeFocus(id) {
   // un-focus previous
@@ -1113,12 +1281,10 @@ function spawnBossTab() {
   const card = mk('div', 'tab-card boss-tab');
   card.id = `tab-${id}`;
 
-  const area = dom.area;
   const cW = 340, cH = 260;
-  const mx = Math.max(10, (area.offsetWidth  || window.innerWidth)  - cW - 10);
-  const my = Math.max(10, (area.offsetHeight || window.innerHeight - 52) - cH - 10);
-  card.style.left  = rand(10, mx) + 'px';
-  card.style.top   = rand(10, my) + 'px';
+  const pos = findSpawnPosition(cW, cH);
+  card.style.left  = pos.x + 'px';
+  card.style.top   = pos.y + 'px';
   card.style.width = cW + 'px';
 
   const header = mk('div', 'tab-header boss-header');
@@ -1188,6 +1354,48 @@ function applyPowerup(kind) {
       S.doubleScoreActive = false;
       dom.multEl.classList.remove('double-score-active');
     }, 15000);
+  } else if (kind === POWERUP.TIME_WARP) {
+    clearTimeout(S.timeWarpTid);
+    S.timeWarpActive = true;
+    dom.area.classList.add('time-warp-active');
+    S.timeWarpTid = setTimeout(() => {
+      S.timeWarpActive = false;
+      dom.area.classList.remove('time-warp-active');
+    }, 8000);
+  } else if (kind === POWERUP.SHIELD) {
+    S.shieldActive = true;
+    dom.segs.forEach(s => s.classList.add('shielded'));
+  } else if (kind === POWERUP.AUTO_CLOSE) {
+    const candidates = [];
+    S.tabs.forEach((t, id) => {
+      if (!t.done && !t.gone && t.type !== T.POWERUP && t.type !== T.BOSS && t.type !== T.FAKE) {
+        candidates.push(id);
+      }
+    });
+    if (candidates.length > 0) completeTab(pick(candidates));
+  } else if (kind === POWERUP.SCRAMBLE) {
+    const positions = [];
+    S.tabs.forEach(t => {
+      if (!t.done && !t.gone && t.element) {
+        positions.push({
+          x: parseFloat(t.element.style.left) || 0,
+          y: parseFloat(t.element.style.top)  || 0,
+        });
+      }
+    });
+    shuffle(positions);
+    let i = 0;
+    S.tabs.forEach(t => {
+      if (!t.done && !t.gone && t.element) {
+        const pos = positions[i++];
+        if (!t.isBouncing) {
+          t.element.style.transition = 'left 0.35s ease-out, top 0.35s ease-out';
+          setTimeout(() => { if (t.element) t.element.style.transition = ''; }, 380);
+        }
+        t.element.style.left = pos.x + 'px';
+        t.element.style.top  = pos.y + 'px';
+      }
+    });
   }
 }
 
@@ -1209,6 +1417,165 @@ function mkPowerup(tab) {
   return { el, cleanup: () => {} };
 }
 
+/* ── Find the Odd One ── */
+function mkOddOne(tab) {
+  const cols  = tab.isPanic ? 4 : 3;
+  const total = cols * 2; // 6 or 8 cells
+
+  const catPool  = shuffle([...ODD_CATEGORIES]);
+  const mainCat  = catPool[0];
+  const oddCat   = catPool[1];
+  const mainIcons = shuffle([...mainCat]).slice(0, total - 1);
+  const oddIcon   = pick(oddCat);
+
+  const cells = shuffle([
+    ...mainIcons.map(icon => ({ icon, isOdd: false })),
+    { icon: oddIcon, isOdd: true },
+  ]);
+
+  const el = mk('div', 'tab-content');
+  el.style.padding = '10px 10px 8px';
+  el.innerHTML = `
+    <p class="mg-instruction">Find the <strong>odd one out!</strong></p>
+    <div class="oddone-grid" style="grid-template-columns:repeat(${cols},1fr)">
+      ${cells.map(c => `<button class="oddone-cell" data-odd="${c.isOdd}">${c.icon}</button>`).join('')}
+    </div>`;
+
+  el.querySelector('.oddone-grid').addEventListener('click', e => {
+    const btn = e.target.closest('.oddone-cell');
+    if (!btn) return;
+    if (btn.dataset.odd === 'true') {
+      btn.classList.add('oddone-correct');
+      completeTab(tab.id);
+    } else {
+      btn.classList.add('oddone-wrong');
+      setTimeout(() => btn.classList.remove('oddone-wrong'), 400);
+    }
+  });
+
+  return { el, cleanup: () => {} };
+}
+
+/* ── Volume Knob ── */
+function mkKnob(tab) {
+  const RANGE_MIN = -135, RANGE_MAX = 135;
+  const tol         = tab.isPanic ? 12 : 20;
+  const targetAngle = rand(RANGE_MIN + 50, RANGE_MAX - 50);
+  const tA1 = targetAngle - tol;
+  const tA2 = targetAngle + tol;
+  const R = 50, CX = 60, CY = 60;
+
+  let currentAngle    = 0;
+  let dragging        = false;
+  let prevMouseAngle  = null;
+
+  function toRad(d) { return d * Math.PI / 180; }
+
+  function ptOnArc(a) {
+    return {
+      x: +(CX + R * Math.sin(toRad(a))).toFixed(2),
+      y: +(CY - R * Math.cos(toRad(a))).toFixed(2),
+    };
+  }
+
+  function arcPath(a1, a2) {
+    const p1    = ptOnArc(a1), p2 = ptOnArc(a2);
+    const large = ((a2 - a1) % 360 + 360) % 360 > 180 ? 1 : 0;
+    return `M ${p1.x} ${p1.y} A ${R} ${R} 0 ${large} 1 ${p2.x} ${p2.y}`;
+  }
+
+  function dotPos(a) {
+    return {
+      x: +(CX + 18 * Math.sin(toRad(a))).toFixed(2),
+      y: +(CY - 18 * Math.cos(toRad(a))).toFixed(2),
+    };
+  }
+
+  const bgPath   = arcPath(RANGE_MIN, RANGE_MAX);
+  const tgtPath  = arcPath(tA1, tA2);
+  const initDot  = dotPos(currentAngle);
+  const initFill = arcPath(RANGE_MIN, currentAngle);
+
+  const el = mk('div', 'tab-content');
+  el.innerHTML = `
+    <p class="mg-instruction">Turn the knob to the <strong>green zone!</strong></p>
+    <div class="knob-container">
+      <svg class="knob-svg" viewBox="0 0 120 120" width="120" height="120">
+        <path fill="none" stroke="#e0e0e0" stroke-width="8" stroke-linecap="round" d="${bgPath}"/>
+        <path class="knob-arc-target" fill="none" stroke="#4caf50" stroke-width="8" stroke-linecap="round" opacity="0.55" d="${tgtPath}"/>
+        <path class="knob-arc-fill" fill="none" stroke="#4285f4" stroke-width="5" stroke-linecap="round" d="${initFill}"/>
+        <circle class="knob-body" cx="60" cy="60" r="26" fill="#f0f0f0" stroke="#bbb" stroke-width="2" style="cursor:grab"/>
+        <circle class="knob-dot" cx="${initDot.x}" cy="${initDot.y}" r="4" fill="#333" pointer-events="none"/>
+      </svg>
+    </div>
+    <div class="knob-feedback"></div>`;
+
+  const fillPathEl = el.querySelector('.knob-arc-fill');
+  const dotEl      = el.querySelector('.knob-dot');
+  const bodyEl     = el.querySelector('.knob-body');
+  const feedEl     = el.querySelector('.knob-feedback');
+  const svgEl      = el.querySelector('.knob-svg');
+
+  function updateVisual() {
+    const fill = Math.abs(currentAngle - RANGE_MIN) > 0.5
+      ? arcPath(RANGE_MIN, currentAngle) : '';
+    fillPathEl.setAttribute('d', fill);
+    const dp = dotPos(currentAngle);
+    dotEl.setAttribute('cx', dp.x);
+    dotEl.setAttribute('cy', dp.y);
+    const inZone = currentAngle >= tA1 && currentAngle <= tA2;
+    bodyEl.setAttribute('fill', inZone ? '#e8f5e9' : '#f0f0f0');
+    fillPathEl.setAttribute('stroke', inZone ? '#4caf50' : '#4285f4');
+  }
+
+  function getMouseAngle(e) {
+    const rect = svgEl.getBoundingClientRect();
+    const cx   = rect.left + rect.width / 2;
+    const cy   = rect.top  + rect.height / 2;
+    return Math.atan2(e.clientX - cx, -(e.clientY - cy)) * 180 / Math.PI;
+  }
+
+  function onMouseMove(e) {
+    if (!dragging) return;
+    const mAngle = getMouseAngle(e);
+    let delta = mAngle - prevMouseAngle;
+    if (delta >  180) delta -= 360;
+    if (delta < -180) delta += 360;
+    prevMouseAngle = mAngle;
+    currentAngle   = Math.max(RANGE_MIN, Math.min(RANGE_MAX, currentAngle + delta));
+    updateVisual();
+  }
+
+  function onMouseUp() {
+    if (!dragging) return;
+    dragging = false;
+    const inZone = currentAngle >= tA1 && currentAngle <= tA2;
+    if (inZone) {
+      completeTab(tab.id);
+    } else {
+      feedEl.textContent = currentAngle < tA1 ? 'Too low!' : 'Too high!';
+      feedEl.style.color = '#f44336';
+      setTimeout(() => { feedEl.textContent = ''; }, 700);
+    }
+  }
+
+  bodyEl.addEventListener('mousedown', e => {
+    dragging       = true;
+    prevMouseAngle = getMouseAngle(e);
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+
+  return {
+    el,
+    cleanup: () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup',   onMouseUp);
+    },
+  };
+}
+
 /* ── dispatcher ── */
 function buildGame(type, tab) {
   switch (type) {
@@ -1226,6 +1593,8 @@ function buildGame(type, tab) {
     case T.DRAGDROP:   return mkDragDrop(tab);
     case T.PASSWORD:   return mkPassword(tab);
     case T.POWERUP:    return mkPowerup(tab);
+    case T.ODD_ONE:    return mkOddOne(tab);
+    case T.KNOB:       return mkKnob(tab);
     default:           return mkClickSpam(tab);
   }
 }
@@ -1234,30 +1603,169 @@ function buildGame(type, tab) {
    TAB SPAWNING & MANAGEMENT
    ══════════════════════════════════════════════ */
 
-const BASE_TYPES    = [T.CLICK_SPAM, T.TIMER_HOLD, T.MEMORY, T.PRECISION, T.TYPE_IT, T.MATH, T.STROOP, T.SEQUENCE, T.REACTION, T.SLIDER, T.CAPTCHA, T.DRAGDROP, T.PASSWORD];
-const FAKEABLE_TYPES = BASE_TYPES; // any real tab type can be disguised as a fake
+/* ── Bounce physics ── */
+function startBounce(card) {
+  const area  = dom.area;
+  const speed = S.panicOn ? 80 : 50;
+  const angle = Math.random() * Math.PI * 2;
+  let vx = Math.cos(angle) * speed;
+  let vy = Math.sin(angle) * speed;
+  let lastTs = null;
+  let rafId  = null;
 
-function pickType() {
-  if (S.panicOn  && Math.random() < 0.18) return T.PANIC;
-  if (S.fakeOn   && Math.random() < 0.15) return T.FAKE;
-  if (S.powerupOn && Math.random() < 0.08) return T.POWERUP;
-  return pick(BASE_TYPES);
+  function frame(ts) {
+    // Idle while the card is being dragged
+    if (drag?.el === card) { lastTs = null; rafId = requestAnimationFrame(frame); return; }
+
+    if (lastTs === null) lastTs = ts;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+
+    const aW = area.offsetWidth  || window.innerWidth;
+    const aH = area.offsetHeight || (window.innerHeight - 52);
+    const cW = card.offsetWidth  || 280;
+    const cH = card.offsetHeight || 235;
+
+    let x = parseFloat(card.style.left) || 0;
+    let y = parseFloat(card.style.top)  || 0;
+
+    x += vx * dt;
+    y += vy * dt;
+
+    if (x <= 0)       { x = 0;       vx =  Math.abs(vx); }
+    if (x >= aW - cW) { x = aW - cW; vx = -Math.abs(vx); }
+    if (y <= 0)       { y = 0;       vy =  Math.abs(vy); }
+    if (y >= aH - cH) { y = aH - cH; vy = -Math.abs(vy); }
+
+    card.style.left = x + 'px';
+    card.style.top  = y + 'px';
+    rafId = requestAnimationFrame(frame);
+  }
+
+  rafId = requestAnimationFrame(frame);
+  return () => cancelAnimationFrame(rafId);
 }
 
-function spawnTab() {
+/* ── Linked pair spawner ── */
+function spawnLinkedPair() {
   if (!S.running) return;
+  const groupId = S.nextLinkGroup++;
+  S.linkGroups.set(groupId, { ids: [], doneTimes: [] });
+  spawnTab({ linkGroup: groupId });
+  setTimeout(() => { if (S.running) spawnTab({ linkGroup: groupId }); }, rand(300, 700));
+}
 
-  const type    = pickType();
+/* ── Confetti burst (new high score) ── */
+function spawnConfetti() {
+  const colors = ['#f4c430', '#4285f4', '#4caf50', '#f44336', '#ab47bc', '#00bcd4', '#ff7043'];
+  for (let i = 0; i < 55; i++) {
+    const el = mk('div', 'confetti-particle');
+    const isRect = Math.random() > 0.5;
+    el.style.cssText = [
+      `left:${rand(15, 85)}vw`,
+      `top:${rand(5, 40)}vh`,
+      `background:${pick(colors)}`,
+      `width:${rand(5, 12)}px`,
+      `height:${rand(5, 12)}px`,
+      `border-radius:${isRect ? '2px' : '50%'}`,
+      `--tx:${rand(-160, 160)}px`,
+      `--ty:${rand(-220, 60)}px`,
+      `--rot:${rand(-400, 400)}deg`,
+      `animation-delay:${rand(0, 500)}ms`,
+    ].join(';');
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1900);
+  }
+}
+
+/* ── Link bonus popup ── */
+function spawnLinkBonusPopup(bonus) {
+  const popup = mk('div', 'score-popup score-popup-big link-bonus-popup');
+  popup.textContent = '🔗 LINK +' + bonus.toLocaleString();
+  popup.style.left = '50%';
+  popup.style.top  = '80px';
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 1100);
+}
+
+const DIFF_TYPES = {
+  chill:  [T.CLICK_SPAM, T.SEQUENCE, T.REACTION, T.SLIDER, T.ODD_ONE, T.MATH, T.CAPTCHA, T.DRAGDROP],
+  normal: [T.CLICK_SPAM, T.SEQUENCE, T.REACTION, T.SLIDER, T.ODD_ONE, T.MATH, T.CAPTCHA, T.DRAGDROP,
+           T.TIMER_HOLD, T.MEMORY, T.PRECISION, T.TYPE_IT],
+  chaos:  [T.CLICK_SPAM, T.SEQUENCE, T.REACTION, T.SLIDER, T.ODD_ONE, T.MATH, T.CAPTCHA, T.DRAGDROP,
+           T.TIMER_HOLD, T.MEMORY, T.PRECISION, T.TYPE_IT,
+           T.STROOP, T.KNOB, T.PASSWORD],
+};
+
+function pickType() {
+  if (S.panicOn  && rng() < 0.18) return T.PANIC;
+  if (S.fakeOn   && rng() < 0.15) return T.FAKE;
+  if (!noPowerups && S.powerupOn && rng() < 0.08) return T.POWERUP;
+  return pick(DIFF_TYPES[chosenDiff]);
+}
+
+/* ── Non-overlapping spawn position (chill + normal only) ── */
+function findSpawnPosition(cW, cH) {
+  const area = dom.area;
+  const aW   = area.offsetWidth  || window.innerWidth;
+  const aH   = area.offsetHeight || (window.innerHeight - 52);
+  const maxX = Math.max(10, aW - cW - 10);
+  const maxY = Math.max(10, aH - cH - 10);
+
+  if (chosenDiff === 'chaos') {
+    return { x: rand(10, maxX), y: rand(10, maxY) };
+  }
+
+  // Gather rects of all live tabs
+  const rects = [];
+  S.tabs.forEach(t => {
+    if (!t.element || t.done || t.gone) return;
+    rects.push({
+      x: parseFloat(t.element.style.left) || 0,
+      y: parseFloat(t.element.style.top)  || 0,
+      w: t.element.offsetWidth  || cW,
+      h: t.element.offsetHeight || cH,
+    });
+  });
+
+  const pad = 18; // breathing room between cards
+  for (let i = 0; i < 25; i++) {
+    const x = rand(10, maxX);
+    const y = rand(10, maxY);
+    const clear = rects.every(r =>
+      x > r.x + r.w + pad || x + cW + pad < r.x ||
+      y > r.y + r.h + pad || y + cH + pad < r.y
+    );
+    if (clear) return { x, y };
+  }
+  // Fallback: screen is too crowded, place randomly
+  return { x: rand(10, maxX), y: rand(10, maxY) };
+}
+
+function spawnTab(opts = {}) {
+  if (!S.running) return;
+  const { linkGroup = null, forceType = null } = opts;
+
+  // Linked tabs always use a plain base type (no panic/fake/powerup wrapping)
+  const type    = linkGroup !== null ? pick(DIFF_TYPES[chosenDiff])
+                : forceType !== null ? forceType
+                : pickType();
   const isPanic = type === T.PANIC;
   const isFake  = type === T.FAKE;
-  const inner   = isPanic ? pick(BASE_TYPES)
-                : isFake  ? pick(FAKEABLE_TYPES)
+  const inner   = isPanic ? pick(DIFF_TYPES[chosenDiff])
+                : isFake  ? pick(DIFF_TYPES[chosenDiff])
                 : type;
   const gameT   = (isPanic || isFake) ? inner : type;
-  const tLimit  = isPanic ? getPanicTime(inner)
+  const tBase   = isPanic ? getPanicTime(inner)
                 : isFake  ? TIME_LIMIT[inner]
                 : TIME_LIMIT[type];
+  const tLimit  = S.chaosPlus ? Math.max(3, Math.round(tBase * 0.75)) : tBase;
   const id      = S.nextId++;
+
+  // Bouncing: only on base tabs (not linked, panic, fake, powerup)
+  const isBouncing = S.bounceOn && linkGroup === null &&
+                     !isPanic && type !== T.FAKE && type !== T.POWERUP &&
+                     rng() < 0.2;
 
   const tab = {
     id, type, inner, isPanic,
@@ -1273,35 +1781,41 @@ function spawnTab() {
     isBonus:     false,
     isCritical:  false,
     revealed:    false,
+    linkGroup,
+    isBouncing,
   };
 
-  // Roll bonus / critical (mutually exclusive, not on panic/fake/powerup)
-  if (!isPanic && type !== T.FAKE && type !== T.POWERUP) {
-    if (S.bonusOn && Math.random() < 0.12) {
+  // Roll bonus / critical (mutually exclusive, not on panic/fake/powerup/linked)
+  if (!isPanic && type !== T.FAKE && type !== T.POWERUP && linkGroup === null) {
+    if (S.bonusOn && rng() < 0.12) {
       tab.isBonus = true;
-    } else if (S.criticalOn && Math.random() < 0.15) {
+    } else if (S.criticalOn && rng() < 0.15) {
       tab.isCritical = true;
     }
   }
 
   /* build card */
   let cardClass = 'tab-card';
-  if (isPanic)           cardClass += ' panic';
-  if (tab.isBonus)       cardClass += ' bonus-tab';
-  if (tab.isCritical)    cardClass += ' critical-tab';
+  if (isPanic)            cardClass += ' panic';
+  if (tab.isBonus)        cardClass += ' bonus-tab';
+  if (tab.isCritical)     cardClass += ' critical-tab';
   if (type === T.POWERUP) cardClass += ' powerup-tab';
+  if (linkGroup !== null) cardClass += ' linked-tab';
+  if (isBouncing)         cardClass += ' bouncing-tab';
   const card = mk('div', cardClass);
   card.id = `tab-${id}`;
 
-  const area = dom.area;
   const cW = 280, cH = 235;
-  const mx = Math.max(10, (area.offsetWidth  || window.innerWidth)  - cW - 10);
-  const my = Math.max(10, (area.offsetHeight || window.innerHeight - 52) - cH - 10);
-  card.style.left = rand(10, mx) + 'px';
-  card.style.top  = rand(10, my) + 'px';
+  const pos = findSpawnPosition(cW, cH);
+  card.style.left = pos.x + 'px';
+  card.style.top  = pos.y + 'px';
 
-  /* bonus / critical banner */
-  if (tab.isBonus) {
+  /* banners (link > bonus/critical) */
+  if (linkGroup !== null) {
+    const banner = mk('div', 'tab-type-banner link-banner');
+    banner.textContent = '🔗  LINKED PAIR';
+    card.appendChild(banner);
+  } else if (tab.isBonus) {
     const banner = mk('div', 'tab-type-banner bonus-banner');
     banner.textContent = '★  BONUS  ·  +2× SCORE';
     card.appendChild(banner);
@@ -1337,9 +1851,22 @@ function spawnTab() {
   tab.element = card;
   S.tabs.set(id, tab);
 
+  // Register with link group
+  if (linkGroup !== null) {
+    const grp = S.linkGroups.get(linkGroup);
+    if (grp) grp.ids.push(id);
+  }
+
   const game = buildGame(gameT, tab);
   card.appendChild(game.el);
   tab.cleanup = game.cleanup;
+
+  // Wrap cleanup with bounce cancel if bouncing
+  if (isBouncing) {
+    const stopBounce  = startBounce(card);
+    const prevCleanup = tab.cleanup;
+    tab.cleanup = () => { prevCleanup?.(); stopBounce(); };
+  }
 
   makeDraggable(card, header);
 
@@ -1424,6 +1951,26 @@ function completeTab(id) {
   S.score += points;
   refreshHUD(S.mult > prevMult);
 
+  /* link group check */
+  if (tab.linkGroup !== null) {
+    const grp = S.linkGroups.get(tab.linkGroup);
+    if (grp) {
+      grp.doneTimes.push(Date.now());
+      if (grp.doneTimes.length === 2) {
+        const diff = Math.abs(grp.doneTimes[1] - grp.doneTimes[0]);
+        if (diff <= 3000) {
+          const linkBonus = Math.round(150 * S.mult);
+          S.score += linkBonus;
+          S.linkCombos++;
+          refreshHUD(false);
+          spawnLinkBonusPopup(linkBonus);
+          setUrl('tab-hoarder://link-combo!', 2500);
+        }
+        S.linkGroups.delete(tab.linkGroup);
+      }
+    }
+  }
+
   /* score popup */
   spawnScorePopup(tab.element, points, tab.isBonus || S.mult > 1);
 
@@ -1451,6 +1998,8 @@ function expireTab(id) {
 
   S.streak = 0;
   S.mult   = 1;
+  // Break any pending link group
+  if (tab.linkGroup !== null) S.linkGroups.delete(tab.linkGroup);
   if (tab.type !== T.POWERUP && tab.type !== T.BOSS) S.tabsMissed++;
   if (tab.type === T.BOSS) {
     S.bossAlive = false;
@@ -1460,9 +2009,15 @@ function expireTab(id) {
 
   // Bonus, powerup, and boss tabs don't cost health when missed
   if (!tab.isBonus && tab.type !== T.POWERUP && tab.type !== T.BOSS) {
-    loseHealth();
-    // Critical tabs deal double damage
-    if (tab.isCritical) loseHealth();
+    if (S.shieldActive) {
+      S.shieldActive = false;
+      dom.segs.forEach(s => s.classList.remove('shielded'));
+      setUrl('tab-hoarder://SHIELD-BLOCKED!', 2000);
+    } else {
+      loseHealth();
+      // Critical tabs deal double damage
+      if (tab.isCritical) loseHealth();
+    }
   }
 
   /* red flash, then shrink out */
@@ -1516,11 +2071,26 @@ function dropTab(id) {
 
 function loseHealth() {
   if (!S.running) return;
+  if (devInvincible) return;
+  const lostIdx = S.health - 1;
   S.health = Math.max(0, S.health - 1);
   renderHealth();
   updateUrl();
-  dom.area.classList.add('shaking');
-  setTimeout(() => dom.area.classList.remove('shaking'), 500);
+
+  // Drain animation on the segment just lost
+  const seg = dom.segs[lostIdx];
+  if (seg) {
+    seg.classList.add('draining');
+    setTimeout(() => seg.classList.remove('draining'), 480);
+  }
+
+  // Shake intensity scales with remaining health
+  const shakeClass = S.health <= 1 ? 'shaking-extreme' : S.health <= 2 ? 'shaking-hard' : 'shaking';
+  dom.area.classList.remove('shaking', 'shaking-hard', 'shaking-extreme');
+  void dom.area.offsetWidth; // restart animation
+  dom.area.classList.add(shakeClass);
+  setTimeout(() => dom.area.classList.remove(shakeClass), 520);
+
   if (S.health <= 0) endGame();
 }
 
@@ -1529,6 +2099,46 @@ function renderHealth() {
     seg.classList.toggle('lost',     i >= S.health);
     seg.classList.toggle('critical', i < S.health && S.health <= 2);
   });
+  updateFavicon();
+}
+
+/* ── Favicon (updates to reflect health) ── */
+function updateFavicon() {
+  if (!faviconCanvas) {
+    faviconCanvas = document.createElement('canvas');
+    faviconCanvas.width = faviconCanvas.height = 32;
+  }
+  if (!faviconLink) {
+    faviconLink = document.querySelector("link[rel~='icon']");
+    if (!faviconLink) {
+      faviconLink = document.createElement('link');
+      faviconLink.rel = 'icon';
+      document.head.appendChild(faviconLink);
+    }
+  }
+  const ctx = faviconCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 32, 32);
+
+  ctx.fillStyle = '#1e1e3a';
+  ctx.fillRect(0, 0, 32, 32);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('T', 16, 12);
+
+  const health  = S.running ? S.health : MAX_HEALTH;
+  const barColor = health <= 1 ? '#f44336' : health <= 2 ? '#f4c430' : '#4caf50';
+  const segW = 4, gap = 2;
+  const totalW = MAX_HEALTH * segW + (MAX_HEALTH - 1) * gap;
+  const startX = (32 - totalW) / 2;
+  for (let i = 0; i < MAX_HEALTH; i++) {
+    ctx.fillStyle = i < health ? barColor : '#333';
+    ctx.fillRect(startX + i * (segW + gap), 24, segW, 5);
+  }
+
+  faviconLink.href = faviconCanvas.toDataURL('image/png');
 }
 
 /* ══════════════════════════════════════════════
@@ -1566,13 +2176,33 @@ function tick() {
   S.tabs.forEach((tab, id) => {
     if (tab.done || tab.gone) return;
 
+    // Time Warp: extend deadlines by half the tick interval (net 50% slow)
+    if (S.timeWarpActive) tab.deadline += 50;
+    // Freeze: extend deadlines by full tick interval (net frozen)
+    if (S.freezeActive) tab.deadline += 100;
+
     const rem = tab.deadline - now;
     const pct = Math.max(0, rem / (tab.tLimit * 1000));
 
     const fill = tab.element?.querySelector('.tab-timer-fill');
     if (fill) {
       fill.style.width = (pct * 100) + '%';
-      fill.style.background = pct > 0.5 ? '#4caf50' : pct > 0.25 ? '#f4c430' : '#f44336';
+      fill.style.background = S.timeWarpActive ? '#7c4dff'
+        : pct > 0.5 ? '#4caf50' : pct > 0.25 ? '#f4c430' : '#f44336';
+    }
+
+    // Urgency pulse: red throb when < 2s left
+    tab.element?.classList.toggle('tab-urgent', rem > 0 && rem <= 2000);
+
+    // Tab aging: desaturate content as time drains
+    const contentEl = tab.element?.querySelector('.tab-content');
+    if (contentEl) {
+      if (pct < 0.5) {
+        const sat = Math.max(25, pct * 200);
+        contentEl.style.filter = `saturate(${sat.toFixed(0)}%)`;
+      } else {
+        contentEl.style.filter = '';
+      }
     }
 
     if (rem <= 0) expired.push(id);
@@ -1612,6 +2242,24 @@ function clockTick() {
     spawnBossTab();
   }
 
+  // Milestone banners
+  if (t >= 60  && !S.m60)  { S.m60  = true; showMilestoneBanner(MILESTONE_MSGS[60]);  }
+  if (t >= 120 && !S.m120) { S.m120 = true; showMilestoneBanner(MILESTONE_MSGS[120]); }
+  if (t >= 180 && !S.m180) { S.m180 = true; showMilestoneBanner(MILESTONE_MSGS[180]); }
+  if (t >= 240 && !S.m240) { S.m240 = true; showMilestoneBanner(MILESTONE_MSGS[240]); }
+  if (t >= 300 && !S.m300) { S.m300 = true; showMilestoneBanner(MILESTONE_MSGS[300]); }
+
+  // Adaptive difficulty check every 15s
+  if (t % 15 === 0) adaptDifficulty();
+
+  if (t >= cfg.linkedAt && !S.linkedOn) {
+    S.linkedOn = true;
+    setUrl('tab-hoarder://linked-tabs-incoming', 3500);
+  }
+  if (t >= cfg.bounceAt && !S.bounceOn) {
+    S.bounceOn = true;
+    setUrl('tab-hoarder://tabs-are-escaping', 3500);
+  }
   if (t >= cfg.fakeAt  && !S.fakeOn)   {
     S.fakeOn  = true;
     S.bonusOn = true;
@@ -1627,12 +2275,110 @@ function clockTick() {
     restartSpawn();
     setUrl('tab-hoarder://system-overload', 3500);
   }
+  if (t >= cfg.chaosPlusAt && !S.chaosPlus) {
+    S.chaosPlus = true;
+    S.spawnMs   = Math.max(cfg.minSpawnMs, Math.round(S.spawnMs * 0.85));
+    restartSpawn();
+    setUrl('tab-hoarder://chaos-plus', 3500);
+    showMilestoneBanner('CHAOS+ ENGAGED ☠️');
+  }
+
+  // Waves mode: 3-minute round → 10s breather → next wave
+  if (chosenMode === 'waves' && t > 0 && t % 180 === 0 && !S.waveBreather) {
+    S.waveNum++;
+    if (S.health < MAX_HEALTH) {
+      S.health = Math.min(MAX_HEALTH, S.health + 1);
+      renderHealth();
+    } else {
+      // already full — bonus points
+      S.score += 500;
+      refreshHUD(false);
+    }
+    showWaveBreather(S.waveNum, () => {
+      restartSpawn();
+      setTimeout(spawnTab, 400);
+    });
+  }
+}
+
+/* ── Adaptive difficulty ── */
+function adaptDifficulty() {
+  if (!S.running || S.freezeActive || S.elapsed < 30) return;
+  const cfg        = S.diffCfg;
+  const baseScaled = Math.max(cfg.minSpawnMs, cfg.spawnMs * Math.pow(0.9, S.scaleLevel));
+  let changed      = false;
+
+  if (S.health <= 1 && S.streak < 3) {
+    // Struggling: ease up (up to +25% above current scaled rate)
+    const ceiling = baseScaled * 1.25;
+    if (S.spawnMs < ceiling - 10) { S.spawnMs = Math.min(S.spawnMs * 1.08, ceiling); changed = true; }
+  } else if (S.health >= MAX_HEALTH && S.streak >= 9) {
+    // Thriving: push harder (down to -15% below current scaled rate)
+    const floor = Math.max(baseScaled * 0.85, cfg.minSpawnMs);
+    if (S.spawnMs > floor + 10) { S.spawnMs = Math.max(S.spawnMs * 0.95, floor); changed = true; }
+  }
+  if (changed) restartSpawn();
+}
+
+/* ── Milestone banner ── */
+const MILESTONE_MSGS = {
+  60:  "You're still alive?!",
+  120: "Most browsers don't last this long.",
+  180: "You've become one with the tabs.",
+  240: "Tab Hoarder Supreme. 👑",
+  300: "Seriously, just close some tabs.",
+};
+
+function showMilestoneBanner(msg) {
+  const el = mk('div', 'milestone-banner');
+  el.textContent = msg;
+  dom.area.appendChild(el);
+  setTimeout(() => el.remove(), 3800);
+}
+
+/* ── Wave breather overlay ── */
+function showWaveBreather(waveNum, onDone) {
+  S.waveBreather = true;
+  clearInterval(S.spawnTid);
+
+  const overlay  = mk('div', 'wave-breather-overlay');
+  overlay.id = 'wave-breather-overlay';
+  const card = mk('div', 'wave-breather-card');
+
+  const waveLabel = mk('div', 'wb-wave-label');
+  waveLabel.textContent = `Wave ${waveNum - 1} Complete!`;
+
+  const healMsg = mk('div', 'wb-heal-msg');
+  healMsg.textContent = S.health < MAX_HEALTH ? '+1 RAM restored' : 'RAM full — bonus 500 pts!';
+
+  const nextLabel = mk('div', 'wb-next-label');
+  nextLabel.textContent = `Wave ${waveNum} starting in`;
+
+  const countdown = mk('div', 'wb-countdown');
+  countdown.textContent = '10';
+
+  card.append(waveLabel, healMsg, nextLabel, countdown);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  let secs = 10;
+  const tid = setInterval(() => {
+    secs--;
+    countdown.textContent = secs;
+    if (secs <= 0) {
+      clearInterval(tid);
+      overlay.remove();
+      S.waveBreather = false;
+      onDone();
+    }
+  }, 1000);
 }
 
 function restartSpawn() {
   clearInterval(S.spawnTid);
   S.spawnTid = setInterval(() => {
-    spawnTab();
+    if (S.linkedOn && rng() < 0.12) spawnLinkedPair();
+    else spawnTab();
     if (S.doubleOn) setTimeout(spawnTab, Math.round(S.spawnMs / 2));
   }, S.spawnMs);
 }
@@ -1645,9 +2391,19 @@ function startGame() {
   clearInterval(S.spawnTid);
   clearInterval(S.tickTid);
   clearInterval(S.clockTid);
+  clearTimeout(S.doubleScoreTid);
+  clearTimeout(S.freezeTid);
+  clearTimeout(S.timeWarpTid);
   clearTimeout(urlToastTid);
   urlToastTid = null;
   S.tabs.forEach(t => t.cleanup?.());
+
+  // Remove any lingering wave overlay
+  document.getElementById('wave-breather-overlay')?.remove();
+
+  // Set mode globals before newState() reads them
+  noPowerups = dom.noPowerupsEl?.checked || false;
+  rng = chosenMode === 'daily' ? makeMulberry32(getDailySeed()) : () => Math.random();
 
   activeTypeId = null;
   S = newState();
@@ -1655,9 +2411,11 @@ function startGame() {
   S.startTime = Date.now();
 
   dom.area.innerHTML = '';
-  dom.area.classList.remove('boss-active');
+  dom.area.classList.remove('boss-active', 'time-warp-active');
+  dom.segs.forEach(s => s.classList.remove('shielded'));
   dom.startScreen.classList.add('hidden');
   dom.crashScreen.classList.add('hidden');
+  dom.newRecordEl.textContent = 'NEW RECORD!';
   dom.urlBar.classList.remove('url-toast');
   dom.urlBar.textContent = 'tab-hoarder://survive';
 
@@ -1678,18 +2436,29 @@ function endGame() {
   clearInterval(S.tickTid);
   clearInterval(S.clockTid);
   S.tabs.forEach(t => t.cleanup?.());
-  dom.area.classList.remove('boss-active');
+  document.getElementById('wave-breather-overlay')?.remove();
+  dom.area.classList.remove('boss-active', 'time-warp-active');
+  dom.segs.forEach(s => s.classList.remove('shielded'));
 
   const timeStr  = fmt(S.elapsed);
-  const isRecord = saveBest(S.score, S.elapsed);
+  let isRecord;
+  if (chosenMode === 'daily') {
+    isRecord = saveDailyBest(S.score, S.elapsed);
+    updateStartDailyBest();
+  } else {
+    isRecord = addToLeaderboard(S.score, S.elapsed);
+  }
+  if (isRecord) setTimeout(spawnConfetti, 350);
 
   dom.finalTimeEl.textContent  = timeStr;
   dom.finalScoreEl.textContent = S.score.toLocaleString();
-
-  // high score on crash screen
-  const best = loadBest();
-  dom.bestCrashEl.textContent = best.score.toLocaleString();
   dom.newRecordEl.classList.toggle('hidden', !isRecord);
+  if (chosenMode === 'waves') {
+    dom.newRecordEl.classList.remove('hidden');
+    dom.newRecordEl.textContent = `Wave ${S.waveNum} reached!`;
+  }
+
+  renderLeaderboard();
 
   // run stats
   dom.statDoneEl.textContent   = S.tabsDone;
@@ -1701,16 +2470,19 @@ function endGame() {
     [T.MEMORY]: 'Memory',         [T.PRECISION]:  'Precision',
     [T.TYPE_IT]: 'Type It',       [T.MATH]:       'Math',
     [T.STROOP]: 'Stroop',         [T.SEQUENCE]:   'Sequence',
-    [T.REACTION]: 'Reaction',
+    [T.REACTION]: 'Reaction',     [T.ODD_ONE]:    'Odd One Out',
+    [T.KNOB]: 'Volume Knob',
   };
-  const entries = Object.entries(S.typeCounts);
-  if (entries.length > 0) {
-    const fav = entries.reduce((a, b) => b[1] > a[1] ? b : a);
+  const tcEntries = Object.entries(S.typeCounts);
+  if (tcEntries.length > 0) {
+    const fav = tcEntries.reduce((a, b) => b[1] > a[1] ? b : a);
     dom.statFavEl.textContent = TYPE_LABELS[fav[0]] || fav[0];
     dom.statFavRowEl.classList.remove('hidden');
   } else {
     dom.statFavRowEl.classList.add('hidden');
   }
+
+  renderAchievements(checkAchievements());
 
   S.shareMsg = `I survived ${timeStr} in Tab Hoarder 🖥️💀 (${S.tabsDone} tabs done) — beat that: [url]`;
   dom.sharePreviewEl.textContent = S.shareMsg;
@@ -1735,12 +2507,14 @@ document.addEventListener('DOMContentLoaded', () => {
     crashScreen:    $('crash-screen'),
     finalTimeEl:    $('final-time'),
     finalScoreEl:   $('final-score'),
-    bestCrashEl:    $('best-crash-score'),
     newRecordEl:    $('new-record'),
+    leaderboardEl:  $('leaderboard'),
+    achievementsEl: $('achievements-earned'),
     sharePreviewEl: $('share-preview'),
     copyBtn:        $('copy-btn'),
     startBtn:       $('start-btn'),
     restartBtn:     $('restart-btn'),
+    titleBtn:       $('title-btn'),
     startBestEl:    $('start-best-score'),
     statDoneEl:     $('stat-done'),
     statMissedEl:   $('stat-missed'),
@@ -1748,17 +2522,14 @@ document.addEventListener('DOMContentLoaded', () => {
     statFavEl:      $('stat-fav'),
     statFavRowEl:   $('stat-fav-row'),
     streakEl:       $('streak-display'),
+    noPowerupsEl:   $('no-powerups-toggle'),
+    modeDiffRow:    $('mode-diff-row'),
   };
 
   S = newState();
   initDrag();
-
-  // Show high score on start screen
-  const best = loadBest();
-  if (best.score > 0) {
-    dom.startBestEl.textContent = `Best: ${best.score.toLocaleString()} (${fmt(best.time)})`;
-    dom.startBestEl.classList.remove('hidden');
-  }
+  updateFavicon();
+  updateStartBest();
 
   // Global keyboard handler for Type It / Password tabs
   document.addEventListener('keydown', e => {
@@ -1771,17 +2542,136 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // mode picker
+  const MODE_DESC = {
+    endless: 'Survive as long as possible. No respite.',
+    waves:   '3-minute rounds. +1 RAM between waves.',
+    daily:   'Same seed for everyone today. One shot.',
+  };
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      chosenMode = btn.dataset.mode;
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+      $('mode-desc').textContent = MODE_DESC[chosenMode];
+      // Daily mode: hide difficulty picker (fixed to normal)
+      const isDaily = chosenMode === 'daily';
+      if (dom.modeDiffRow) dom.modeDiffRow.style.display = isDaily ? 'none' : '';
+      updateStartBest();
+    });
+  });
+
   // difficulty picker
   document.querySelectorAll('.diff-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       chosenDiff = btn.dataset.diff;
       document.querySelectorAll('.diff-btn').forEach(b => b.classList.toggle('active', b === btn));
       $('diff-desc').textContent = DIFF_DESC[chosenDiff];
+      updateTypeHints();
+      updateStartBest();
     });
   });
 
+  // Type-hints collapsible toggle
+  const hintsToggle = $('type-hints-toggle');
+  const hintsGrid   = $('type-hints');
+  hintsToggle.addEventListener('click', () => {
+    const isOpen = hintsGrid.classList.toggle('open');
+    hintsToggle.classList.toggle('open', isOpen);
+  });
+
+  function updateTypeHints() {
+    const pool = DIFF_TYPES[chosenDiff];
+    hintsGrid.querySelectorAll('.game-card').forEach(card => {
+      const inPool = pool.includes(card.dataset.type);
+      card.classList.toggle('diff-hidden', !inPool);
+    });
+    const count = pool.length;
+    hintsToggle.querySelector('span:first-child').textContent =
+      `${count} mini-game${count === 1 ? '' : 's'} — what to expect`;
+  }
+  updateTypeHints();
+
   dom.startBtn.addEventListener('click',   startGame);
   dom.restartBtn.addEventListener('click', startGame);
+  dom.titleBtn.addEventListener('click', () => {
+    dom.crashScreen.classList.add('hidden');
+    dom.startScreen.classList.remove('hidden');
+    updateStartBest();
+  });
+
+  /* ── Dev Tools ── */
+  function updateDevPhases() {
+    document.querySelectorAll('.dev-phase').forEach(btn => {
+      const f = btn.dataset.flag;
+      btn.classList.toggle('dev-phase-on', !!S[f]);
+    });
+  }
+
+  $('dev-toggle').addEventListener('click', () => {
+    $('dev-panel').classList.toggle('hidden');
+    updateDevPhases();
+  });
+  $('dev-close').addEventListener('click', () => $('dev-panel').classList.add('hidden'));
+
+  // Health buttons
+  document.querySelectorAll('.dev-h-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!S.running) return;
+      S.health = parseInt(btn.dataset.h);
+      renderHealth();
+      updateUrl();
+    });
+  });
+
+  $('dev-invincible').addEventListener('change', e => { devInvincible = e.target.checked; });
+
+  // Spawn specific type
+  $('dev-spawn-btn').addEventListener('click', () => {
+    if (!S.running) return;
+    spawnTab({ forceType: $('dev-type-select').value });
+  });
+
+  // Phase toggles
+  document.querySelectorAll('.dev-phase').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!S.running) return;
+      const f = btn.dataset.flag;
+      S[f] = !S[f];
+      if (f === 'fakeOn'  && S.fakeOn)  { S.bonusOn = true; }
+      if (f === 'panicOn' && S.panicOn) { S.criticalOn = true; }
+      if (f === 'doubleOn' || f === 'chaosPlus') restartSpawn();
+      updateDevPhases();
+    });
+  });
+
+  // Actions
+  $('dev-expire-all').addEventListener('click', () => {
+    if (!S.running) return;
+    [...S.tabs.keys()].forEach(id => expireTab(id));
+  });
+  $('dev-complete-all').addEventListener('click', () => {
+    if (!S.running) return;
+    [...S.tabs.keys()].forEach(id => completeTab(id));
+  });
+  $('dev-spawn-boss').addEventListener('click', () => {
+    if (!S.running) return;
+    spawnBossTab();
+  });
+  $('dev-end-game').addEventListener('click', () => {
+    if (!S.running) return;
+    endGame();
+  });
+
+  // Data
+  $('dev-clear-lb').addEventListener('click', () => {
+    if (!confirm('Clear leaderboard?')) return;
+    localStorage.removeItem(LS_KEY);
+    updateStartBest();
+  });
+  $('dev-clear-ach').addEventListener('click', () => {
+    if (!confirm('Reset achievements?')) return;
+    localStorage.removeItem(ACHIEV_KEY);
+  });
 
   dom.copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(S.shareMsg).then(() => {
