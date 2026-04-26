@@ -146,11 +146,37 @@ const DIFF_DESC = {
   chaos:  'Fast from the start. Panic mode hits early. Good luck.',
 };
 
-let chosenDiff   = 'normal';
-let chosenMode   = 'endless'; // 'endless' | 'waves' | 'daily'
-let noPowerups   = false;
-let rng          = () => Math.random();
+let chosenDiff    = 'normal';
+let chosenMode    = 'endless'; // 'endless' | 'waves' | 'daily' | 'sprint'
+let noPowerups    = false;
+let hardMode      = false;
+let rng           = () => Math.random();
 let devInvincible = false;
+
+/* ── score roll-up animation ── */
+let displayedScore = 0;
+let scoreRafId     = null;
+
+/* ── settings ── */
+const SETTINGS_KEY = 'tabHoarder_settings';
+let settings = { colorblind: 'normal', reducedMotion: false };
+let settingsPausedGame = false;
+
+function loadSettings() {
+  try { settings = { ...settings, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; }
+  catch { /* keep defaults */ }
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function applySettings() {
+  document.body.classList.remove('cb-colorblind', 'cb-high-contrast', 'reduced-motion');
+  if (settings.colorblind === 'colorblind')   document.body.classList.add('cb-colorblind');
+  if (settings.colorblind === 'highcontrast') document.body.classList.add('cb-high-contrast');
+  if (settings.reducedMotion)                 document.body.classList.add('reduced-motion');
+}
 
 /* ── seeded RNG (mulberry32) for Daily Challenge ── */
 function makeMulberry32(seed) {
@@ -188,31 +214,39 @@ function getDailyBestToday() {
   return rec[String(getDailySeed())] || null;
 }
 
-/* ── leaderboard (per-difficulty, top 5) ── */
+/* ── leaderboard (per-difficulty, top 5; sprint uses separate keys) ── */
+const BOARD_INIT = { chill: [], normal: [], chaos: [],
+                     chill_sprint: [], normal_sprint: [], chaos_sprint: [] };
+
 function loadLeaderboard() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY)) || { chill: [], normal: [], chaos: [] }; }
-  catch { return { chill: [], normal: [], chaos: [] }; }
+  try { return { ...BOARD_INIT, ...JSON.parse(localStorage.getItem(LS_KEY)) }; }
+  catch { return { ...BOARD_INIT }; }
+}
+
+function lbKey() {
+  return chosenMode === 'sprint' ? chosenDiff + '_sprint' : chosenDiff;
 }
 
 function addToLeaderboard(score, time) {
   const board  = loadLeaderboard();
-  const diff   = chosenDiff;
-  if (!board[diff]) board[diff] = [];
-  const oldTop = board[diff][0]?.score || 0;
-  board[diff].push({ score, time, date: Date.now() });
-  board[diff].sort((a, b) => b.score - a.score);
-  board[diff] = board[diff].slice(0, 5);
+  const key    = lbKey();
+  if (!board[key]) board[key] = [];
+  const oldTop = board[key][0]?.score || 0;
+  board[key].push({ score, time, date: Date.now() });
+  board[key].sort((a, b) => b.score - a.score);
+  board[key] = board[key].slice(0, 5);
   localStorage.setItem(LS_KEY, JSON.stringify(board));
   return score > oldTop;
 }
 
 function updateStartBest() {
-  if (chosenMode === 'daily') { updateStartDailyBest(); return; }
+  if (chosenMode === 'daily')  { updateStartDailyBest(); return; }
   const board   = loadLeaderboard();
-  const entries = board[chosenDiff] || [];
+  const entries = board[lbKey()] || [];
   if (entries.length > 0) {
-    const top = entries[0];
-    dom.startBestEl.textContent = `Best (${chosenDiff}): ${top.score.toLocaleString()} — ${fmt(top.time)}`;
+    const top    = entries[0];
+    const prefix = chosenMode === 'sprint' ? `Sprint best (${chosenDiff})` : `Best (${chosenDiff})`;
+    dom.startBestEl.textContent = `${prefix}: ${top.score.toLocaleString()} — ${fmt(top.time)}`;
     dom.startBestEl.classList.remove('hidden');
   } else {
     dom.startBestEl.classList.add('hidden');
@@ -232,8 +266,10 @@ function updateStartDailyBest() {
 
 function renderLeaderboard() {
   const board   = loadLeaderboard();
-  const entries = board[chosenDiff] ?? [];
-  const label   = chosenDiff.charAt(0).toUpperCase() + chosenDiff.slice(1);
+  const key     = lbKey();
+  const entries = board[key] ?? [];
+  const diffCap = chosenDiff.charAt(0).toUpperCase() + chosenDiff.slice(1);
+  const label   = chosenMode === 'sprint' ? `Sprint (${diffCap})` : diffCap;
   if (entries.length === 0) {
     dom.leaderboardEl.innerHTML = `<div class="lb-title">${label} — No runs yet</div>`;
     return;
@@ -248,49 +284,6 @@ function renderLeaderboard() {
       </div>`).join('')}`;
 }
 
-/* ── achievements ── */
-const ACHIEV_KEY = 'tabHoarder_achievements';
-
-const ACHIEVEMENTS = [
-  { id: 'streak10',    icon: '🔥', label: 'On Fire',        check: S      => S.bestStreak >= 10 },
-  { id: 'streak20',    icon: '🌋', label: 'Unstoppable',    check: S      => S.bestStreak >= 20 },
-  { id: 'survive3',    icon: '⏱',  label: 'Survivor',       check: S      => S.elapsed >= 180 },
-  { id: 'survive5',    icon: '🏅', label: 'Legend',          check: S      => S.elapsed >= 300 },
-  { id: 'flawless',    icon: '✨', label: 'Flawless',        check: S      => S.tabsMissed === 0 && S.tabsDone >= 10 },
-  { id: 'century',     icon: '💯', label: 'Century',         check: S      => S.tabsDone >= 100 },
-  { id: 'score10k',    icon: '🏆', label: 'High Scorer',    check: S      => S.score >= 10000 },
-  { id: 'score50k',    icon: '👑', label: 'Elite',           check: S      => S.score >= 50000 },
-  { id: 'linked5',     icon: '🔗', label: 'Linked Up',       check: S      => S.linkCombos >= 5 },
-  { id: 'chaosmaster', icon: '💀', label: 'Chaos Master',   check: (S, d) => S.elapsed >= 180 && d === 'chaos' },
-];
-
-function checkAchievements() {
-  const earned = new Set();
-  ACHIEVEMENTS.forEach(a => { if (a.check(S, chosenDiff)) earned.add(a.id); });
-  return earned;
-}
-
-function loadUnlocked() {
-  try { return new Set(JSON.parse(localStorage.getItem(ACHIEV_KEY)) || []); }
-  catch { return new Set(); }
-}
-
-function renderAchievements(newlyEarned) {
-  const allUnlocked = loadUnlocked();
-  newlyEarned.forEach(id => allUnlocked.add(id));
-  localStorage.setItem(ACHIEV_KEY, JSON.stringify([...allUnlocked]));
-
-  if (allUnlocked.size === 0) { dom.achievementsEl.classList.add('hidden'); return; }
-  dom.achievementsEl.classList.remove('hidden');
-
-  const badges = ACHIEVEMENTS
-    .filter(a => allUnlocked.has(a.id))
-    .map(a => `<div class="ach-badge${newlyEarned.has(a.id) ? ' ach-new' : ''}">
-      <span class="ach-icon">${a.icon}</span>
-      <span class="ach-label">${a.label}</span>
-    </div>`).join('');
-  dom.achievementsEl.innerHTML = `<div class="lb-title">Achievements</div><div class="ach-grid">${badges}</div>`;
-}
 
 /* ── state ── */
 let S = {};
@@ -341,6 +334,8 @@ function newState() {
     chaosPlus:      false,
     waveNum:        1,
     waveBreather:   false,
+    paused:         false,
+    pauseStartTime: 0,
   };
 }
 
@@ -1231,9 +1226,10 @@ function mkPassword(tab) {
 
 /* ── Boss Tab ── */
 function mkBoss(tab) {
-  // Boss = click spam 30 times, wide card
-  const goal = 30;
-  let n = 0;
+  const goal   = 30;
+  const rageAt = 15;
+  let n        = 0;
+  let enraged  = false;
 
   const el = mk('div', 'tab-content');
   el.innerHTML = `
@@ -1244,11 +1240,22 @@ function mkBoss(tab) {
 
   const countEl = el.querySelector('.boss-count');
   const fillEl  = el.querySelector('.mg-click-bar-fill');
+  const instEl  = el.querySelector('.mg-instruction');
+  const btn     = el.querySelector('.boss-btn');
 
-  el.querySelector('.boss-btn').addEventListener('click', () => {
+  btn.addEventListener('click', () => {
     n++;
     countEl.textContent = `${n}/${goal}`;
     fillEl.style.width  = `${(n / goal) * 100}%`;
+
+    if (!enraged && n >= rageAt) {
+      enraged = true;
+      instEl.innerHTML = '😡 <strong>ENRAGED!</strong> Keep going!';
+      btn.classList.add('boss-btn-enraged');
+      tab.element?.classList.add('boss-enraged');
+      fillEl.style.background = '#b71c1c';
+    }
+
     if (n >= goal) completeTab(tab.id);
   });
 
@@ -1314,7 +1321,7 @@ function spawnBossTab() {
     transform:  'scale(0.7) translateY(-20px)',
     transition: 'opacity 0.3s ease-out, transform 0.3s ease-out',
   });
-  area.appendChild(card);
+  dom.area.appendChild(card);
   requestAnimationFrame(() => requestAnimationFrame(() => {
     card.style.opacity   = '1';
     card.style.transform = 'scale(1) translateY(0)';
@@ -1870,13 +1877,13 @@ function spawnTab(opts = {}) {
 
   makeDraggable(card, header);
 
-  /* spawn animation */
+  /* spawn animation — spring pop */
   Object.assign(card.style, {
     opacity:    '0',
-    transform:  'scale(0.82) translateY(-12px)',
-    transition: 'opacity 0.22s ease-out, transform 0.22s ease-out',
+    transform:  'scale(0.7) translateY(-18px)',
+    transition: 'opacity 0.2s ease-out, transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)',
   });
-  area.appendChild(card);
+  dom.area.appendChild(card);
 
   requestAnimationFrame(() => requestAnimationFrame(() => {
     card.style.opacity   = '1';
@@ -1974,20 +1981,22 @@ function completeTab(id) {
   /* score popup */
   spawnScorePopup(tab.element, points, tab.isBonus || S.mult > 1);
 
-  /* green flash + burst, then fly out */
-  const c = tab.element;
+  /* flash + scale-up burst, then fly out */
+  const c  = tab.element;
+  const fg = completeFxColor();
   spawnCompletionBurst(c);
   c.style.pointerEvents = 'none';
-  c.style.transition = 'none';
-  c.style.boxShadow  = '0 0 0 3px #4caf50, 0 8px 28px rgba(76,175,80,.6)';
-  c.style.background = 'rgba(76,175,80,.06)';
+  c.style.transition = 'transform 0.1s ease-out, box-shadow 0.06s, background 0.06s';
+  c.style.transform  = 'scale(1.07)';
+  c.style.boxShadow  = `0 0 0 3px ${fg}, 0 8px 32px ${fg}bf`;
+  c.style.background = `${fg}14`;
 
   setTimeout(() => {
-    c.style.transition = 'opacity .28s ease-out, transform .28s ease-out';
+    c.style.transition = 'opacity .3s ease-in, transform .3s cubic-bezier(0.4,0,1,1)';
     c.style.opacity    = '0';
-    c.style.transform  = 'scale(0.85) translateY(-10px)';
-    setTimeout(() => dropTab(id), 280);
-  }, 140);
+    c.style.transform  = 'scale(0.8) translateY(-24px)';
+    setTimeout(() => dropTab(id), 300);
+  }, 120);
 }
 
 function expireTab(id) {
@@ -1998,8 +2007,25 @@ function expireTab(id) {
 
   S.streak = 0;
   S.mult   = 1;
-  // Break any pending link group
-  if (tab.linkGroup !== null) S.linkGroups.delete(tab.linkGroup);
+  // Break any pending link group — cascade expire the sibling
+  if (tab.linkGroup !== null) {
+    const grp = S.linkGroups.get(tab.linkGroup);
+    if (grp) {
+      grp.ids.forEach(sibId => {
+        if (sibId !== id) {
+          const sib = S.tabs.get(sibId);
+          if (sib && !sib.done && !sib.gone) {
+            setUrl('tab-hoarder://LINK-BROKEN!', 2200);
+            setTimeout(() => {
+              const s2 = S.tabs.get(sibId);
+              if (s2 && !s2.done && !s2.gone) expireTab(sibId);
+            }, 300);
+          }
+        }
+      });
+      S.linkGroups.delete(tab.linkGroup);
+    }
+  }
   if (tab.type !== T.POWERUP && tab.type !== T.BOSS) S.tabsMissed++;
   if (tab.type === T.BOSS) {
     S.bossAlive = false;
@@ -2020,19 +2046,21 @@ function expireTab(id) {
     }
   }
 
-  /* red flash, then shrink out */
-  const c = tab.element;
+  /* flash, then crumple out */
+  const c  = tab.element;
+  const fg = expireFxColor();
   c.style.pointerEvents = 'none';
-  c.style.transition = 'none';
-  c.style.boxShadow  = '0 0 0 3px #f44336, 0 8px 28px rgba(244,67,54,.6)';
-  c.style.background = 'rgba(244,67,54,.06)';
+  c.style.transition = 'transform 0.07s ease-out, box-shadow 0.06s, background 0.06s';
+  c.style.transform  = 'scale(1.02) rotate(-1deg)';
+  c.style.boxShadow  = `0 0 0 3px ${fg}, 0 8px 32px ${fg}bf`;
+  c.style.background = `${fg}14`;
 
   setTimeout(() => {
-    c.style.transition = 'opacity .32s ease-out, transform .32s ease-out';
+    c.style.transition = 'opacity .36s ease-in, transform .36s ease-in';
     c.style.opacity    = '0';
-    c.style.transform  = 'scale(0.9)';
-    setTimeout(() => dropTab(id), 320);
-  }, 80);
+    c.style.transform  = 'scale(0.78) rotate(-4deg) translateY(10px)';
+    setTimeout(() => dropTab(id), 360);
+  }, 90);
 }
 
 function dismissTab(id) {
@@ -2099,6 +2127,10 @@ function renderHealth() {
     seg.classList.toggle('lost',     i >= S.health);
     seg.classList.toggle('critical', i < S.health && S.health <= 2);
   });
+  if (dom.vignetteEl) {
+    dom.vignetteEl.classList.toggle('vignette-1', S.running && S.health <= 1);
+    dom.vignetteEl.classList.toggle('vignette-2', S.running && S.health === 2);
+  }
   updateFavicon();
 }
 
@@ -2145,8 +2177,37 @@ function updateFavicon() {
    HUD
    ══════════════════════════════════════════════ */
 
+function animateScore(target) {
+  if (scoreRafId !== null) {
+    cancelAnimationFrame(scoreRafId);
+    scoreRafId = null;
+  }
+  const start = displayedScore;
+  const diff  = target - start;
+  if (diff <= 0) {
+    displayedScore = target;
+    dom.scoreEl.textContent = target.toLocaleString();
+    return;
+  }
+  const dur   = 260;
+  const begin = performance.now();
+  function step(now) {
+    const t    = Math.min((now - begin) / dur, 1);
+    const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    const cur  = Math.round(start + diff * ease);
+    dom.scoreEl.textContent = cur.toLocaleString();
+    if (t < 1) {
+      scoreRafId = requestAnimationFrame(step);
+    } else {
+      displayedScore = target;
+      scoreRafId     = null;
+    }
+  }
+  scoreRafId = requestAnimationFrame(step);
+}
+
 function refreshHUD(bump = false) {
-  dom.scoreEl.textContent = S.score.toLocaleString();
+  animateScore(S.score);
   dom.multEl.textContent  = S.mult > 1 ? `${S.mult}×` : '';
 
   // Streak fire indicator
@@ -2162,6 +2223,30 @@ function refreshHUD(bump = false) {
     requestAnimationFrame(() => dom.multEl.classList.add('bump'));
     setTimeout(() => dom.multEl.classList.remove('bump'), 380);
   }
+}
+
+/* ── settings-aware color helpers ── */
+function timerFillColor(pct) {
+  if (S.timeWarpActive) return '#7c4dff';
+  if (settings.colorblind === 'colorblind') {
+    return pct > 0.5 ? '#0288d1' : pct > 0.25 ? '#ff9800' : '#7b1fa2';
+  }
+  if (settings.colorblind === 'highcontrast') {
+    return pct > 0.5 ? '#1b5e20' : pct > 0.25 ? '#e65100' : '#b71c1c';
+  }
+  return pct > 0.5 ? '#4caf50' : pct > 0.25 ? '#f4c430' : '#f44336';
+}
+
+function completeFxColor() {
+  if (settings.colorblind === 'colorblind')   return '#0288d1';
+  if (settings.colorblind === 'highcontrast') return '#1b5e20';
+  return '#4caf50';
+}
+
+function expireFxColor() {
+  if (settings.colorblind === 'colorblind')   return '#e65100';
+  if (settings.colorblind === 'highcontrast') return '#b71c1c';
+  return '#f44336';
 }
 
 /* ══════════════════════════════════════════════
@@ -2186,9 +2271,8 @@ function tick() {
 
     const fill = tab.element?.querySelector('.tab-timer-fill');
     if (fill) {
-      fill.style.width = (pct * 100) + '%';
-      fill.style.background = S.timeWarpActive ? '#7c4dff'
-        : pct > 0.5 ? '#4caf50' : pct > 0.25 ? '#f4c430' : '#f44336';
+      fill.style.width      = (pct * 100) + '%';
+      fill.style.background = timerFillColor(pct);
     }
 
     // Urgency pulse: red throb when < 2s left
@@ -2218,7 +2302,17 @@ function tick() {
 function clockTick() {
   if (!S.running) return;
   S.elapsed = Math.floor((Date.now() - S.startTime) / 1000);
-  dom.timerEl.textContent = fmt(S.elapsed);
+  if (chosenMode === 'sprint') {
+    const remaining = Math.max(0, 90 - S.elapsed);
+    dom.timerEl.textContent = fmt(remaining);
+    if (S.elapsed >= 90) { endGame(); return; }
+    if (remaining <= 10) dom.timerEl.style.color = '#f44336';
+    else if (remaining <= 20) dom.timerEl.style.color = '#f4c430';
+    else dom.timerEl.style.color = '';
+  } else {
+    dom.timerEl.textContent = fmt(S.elapsed);
+    dom.timerEl.style.color = '';
+  }
 
   const t = S.elapsed;
 
@@ -2396,33 +2490,40 @@ function startGame() {
   clearTimeout(S.timeWarpTid);
   clearTimeout(urlToastTid);
   urlToastTid = null;
+  if (scoreRafId !== null) { cancelAnimationFrame(scoreRafId); scoreRafId = null; }
   S.tabs.forEach(t => t.cleanup?.());
 
-  // Remove any lingering wave overlay
+  // Remove any lingering overlays
   document.getElementById('wave-breather-overlay')?.remove();
+  $('pause-overlay')?.classList.add('hidden');
 
   // Set mode globals before newState() reads them
   noPowerups = dom.noPowerupsEl?.checked || false;
+  hardMode   = dom.hardModeEl?.checked   || false;
   rng = chosenMode === 'daily' ? makeMulberry32(getDailySeed()) : () => Math.random();
 
-  activeTypeId = null;
+  activeTypeId   = null;
+  displayedScore = 0;
   S = newState();
   S.running   = true;
   S.startTime = Date.now();
 
   dom.area.innerHTML = '';
   dom.area.classList.remove('boss-active', 'time-warp-active');
+  if (hardMode) dom.area.classList.add('hard-mode');
+  else          dom.area.classList.remove('hard-mode');
   dom.segs.forEach(s => s.classList.remove('shielded'));
   dom.startScreen.classList.add('hidden');
   dom.crashScreen.classList.add('hidden');
+  document.getElementById('crash-content')?.classList.remove('crash-anim');
   dom.newRecordEl.textContent = 'NEW RECORD!';
   dom.urlBar.classList.remove('url-toast');
   dom.urlBar.textContent = 'tab-hoarder://survive';
 
-  renderHealth();
+  renderHealth(); // also clears vignette via S.running check
   refreshHUD();
   refreshTabCount();
-  dom.timerEl.textContent = '00:00';
+  dom.timerEl.textContent = chosenMode === 'sprint' ? fmt(90) : '00:00';
 
   S.tickTid  = setInterval(tick,      100);
   S.clockTid = setInterval(clockTick, 1000);
@@ -2435,10 +2536,15 @@ function endGame() {
   clearInterval(S.spawnTid);
   clearInterval(S.tickTid);
   clearInterval(S.clockTid);
+  if (scoreRafId !== null) { cancelAnimationFrame(scoreRafId); scoreRafId = null; }
   S.tabs.forEach(t => t.cleanup?.());
   document.getElementById('wave-breather-overlay')?.remove();
-  dom.area.classList.remove('boss-active', 'time-warp-active');
+  $('pause-overlay')?.classList.add('hidden');
+  dom.area.classList.remove('boss-active', 'time-warp-active', 'hard-mode');
   dom.segs.forEach(s => s.classList.remove('shielded'));
+  // Clear vignette
+  if (dom.vignetteEl) dom.vignetteEl.classList.remove('vignette-1', 'vignette-2');
+  dom.timerEl.style.color = '';
 
   const timeStr  = fmt(S.elapsed);
   let isRecord;
@@ -2456,6 +2562,8 @@ function endGame() {
   if (chosenMode === 'waves') {
     dom.newRecordEl.classList.remove('hidden');
     dom.newRecordEl.textContent = `Wave ${S.waveNum} reached!`;
+  } else if (chosenMode === 'sprint') {
+    dom.newRecordEl.textContent = isRecord ? '🏆 NEW SPRINT RECORD!' : 'NEW RECORD!';
   }
 
   renderLeaderboard();
@@ -2467,27 +2575,123 @@ function endGame() {
 
   const TYPE_LABELS = {
     [T.CLICK_SPAM]: 'Click Spam', [T.TIMER_HOLD]: 'Timer Hold',
-    [T.MEMORY]: 'Memory',         [T.PRECISION]:  'Precision',
-    [T.TYPE_IT]: 'Type It',       [T.MATH]:       'Math',
-    [T.STROOP]: 'Stroop',         [T.SEQUENCE]:   'Sequence',
-    [T.REACTION]: 'Reaction',     [T.ODD_ONE]:    'Odd One Out',
-    [T.KNOB]: 'Volume Knob',
+    [T.MEMORY]:     'Memory',     [T.PRECISION]:  'Precision',
+    [T.TYPE_IT]:    'Type It',    [T.MATH]:       'Math',
+    [T.STROOP]:     'Stroop',     [T.SEQUENCE]:   'Sequence',
+    [T.REACTION]:   'Reaction',   [T.ODD_ONE]:    'Odd One Out',
+    [T.KNOB]:       'Volume Knob',[T.SLIDER]:     'Slider',
+    [T.CAPTCHA]:    'Captcha',    [T.DRAGDROP]:   'Drag & Drop',
+    [T.PASSWORD]:   'Password',
   };
   const tcEntries = Object.entries(S.typeCounts);
   if (tcEntries.length > 0) {
     const fav = tcEntries.reduce((a, b) => b[1] > a[1] ? b : a);
     dom.statFavEl.textContent = TYPE_LABELS[fav[0]] || fav[0];
     dom.statFavRowEl.classList.remove('hidden');
+
+    // Per-type breakdown: top 5 by count
+    if (dom.typeBreakdownEl) {
+      const sorted = [...tcEntries].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      dom.typeBreakdownEl.innerHTML = sorted.map(([type, count]) =>
+        `<div class="stat-type-row">
+          <span class="stat-type-name">${TYPE_LABELS[type] || type}</span>
+          <span class="stat-type-count">${count}</span>
+        </div>`
+      ).join('');
+      dom.typeBreakdownEl.classList.remove('hidden');
+    }
   } else {
     dom.statFavRowEl.classList.add('hidden');
+    dom.typeBreakdownEl?.classList.add('hidden');
   }
 
-  renderAchievements(checkAchievements());
-
-  S.shareMsg = `I survived ${timeStr} in Tab Hoarder 🖥️💀 (${S.tabsDone} tabs done) — beat that: [url]`;
+  S.shareMsg = chosenMode === 'sprint'
+    ? `I scored ${S.score.toLocaleString()} in a 90s Tab Hoarder sprint 🖥️💀 (${S.tabsDone} tabs) — beat that: [url]`
+    : `I survived ${timeStr} in Tab Hoarder 🖥️💀 (${S.tabsDone} tabs done) — beat that: [url]`;
   dom.sharePreviewEl.textContent = S.shareMsg;
 
+  // Trigger staggered crash-screen entrance animation
+  const crashContent = document.getElementById('crash-content');
+  if (crashContent) {
+    crashContent.classList.remove('crash-anim');
+    void crashContent.offsetWidth; // force reflow to restart animation
+    crashContent.classList.add('crash-anim');
+  }
   dom.crashScreen.classList.remove('hidden');
+}
+
+/* ══════════════════════════════════════════════
+   SETTINGS OPEN / CLOSE
+   ══════════════════════════════════════════════ */
+
+function openSettings() {
+  settingsPausedGame = false;
+  if (S.running && !S.paused) {
+    pauseGame();
+    settingsPausedGame = true;
+    $('pause-overlay').classList.add('hidden'); // settings panel replaces the pause UI
+  }
+  $('settings-overlay').classList.remove('hidden');
+}
+
+function closeSettings() {
+  $('settings-overlay').classList.add('hidden');
+  if (settingsPausedGame && S.paused) {
+    resumeGame();
+    settingsPausedGame = false;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   PAUSE
+   ══════════════════════════════════════════════ */
+
+function pauseGame() {
+  if (!S.running || S.paused || S.waveBreather) return;
+  S.paused         = true;
+  S.pauseStartTime = Date.now();
+  clearInterval(S.spawnTid);
+  clearInterval(S.tickTid);
+  clearInterval(S.clockTid);
+  $('pause-overlay').classList.remove('hidden');
+}
+
+function abandonGame() {
+  // Stop game without saving to leaderboard or triggering crash screen
+  S.running = false;
+  S.paused  = false;
+  clearInterval(S.spawnTid);
+  clearInterval(S.tickTid);
+  clearInterval(S.clockTid);
+  clearTimeout(S.doubleScoreTid);
+  clearTimeout(S.freezeTid);
+  clearTimeout(S.timeWarpTid);
+  if (scoreRafId !== null) { cancelAnimationFrame(scoreRafId); scoreRafId = null; }
+  S.tabs.forEach(t => t.cleanup?.());
+  document.getElementById('wave-breather-overlay')?.remove();
+  dom.area.innerHTML = '';
+  dom.area.classList.remove('boss-active', 'time-warp-active', 'hard-mode');
+  dom.segs.forEach(s => s.classList.remove('shielded'));
+  if (dom.vignetteEl) dom.vignetteEl.classList.remove('vignette-1', 'vignette-2');
+  dom.timerEl.style.color = '';
+  $('pause-overlay').classList.add('hidden');
+  dom.startScreen.classList.remove('hidden');
+  updateStartBest();
+}
+
+function resumeGame() {
+  if (!S.running || !S.paused) return;
+  const pausedMs = Date.now() - S.pauseStartTime;
+  // Shift all active tab deadlines forward so they don't expire during pause
+  S.tabs.forEach(tab => {
+    if (!tab.done && !tab.gone) tab.deadline += pausedMs;
+  });
+  S.startTime += pausedMs; // keep elapsed accurate
+  S.paused = false;
+  $('pause-overlay').classList.add('hidden');
+  S.tickTid  = setInterval(tick,      100);
+  S.clockTid = setInterval(clockTick, 1000);
+  if (!S.waveBreather) restartSpawn();
 }
 
 /* ══════════════════════════════════════════════
@@ -2496,44 +2700,59 @@ function endGame() {
 
 document.addEventListener('DOMContentLoaded', () => {
   dom = {
-    area:           $('tab-area'),
-    segs:           [...document.querySelectorAll('.health-segment')],
-    scoreEl:        $('score-display'),
-    multEl:         $('multiplier-display'),
-    timerEl:        $('game-timer'),
-    tabCountEl:     $('tab-count'),
-    urlBar:         $('url-bar'),
-    startScreen:    $('start-screen'),
-    crashScreen:    $('crash-screen'),
-    finalTimeEl:    $('final-time'),
-    finalScoreEl:   $('final-score'),
-    newRecordEl:    $('new-record'),
-    leaderboardEl:  $('leaderboard'),
-    achievementsEl: $('achievements-earned'),
-    sharePreviewEl: $('share-preview'),
-    copyBtn:        $('copy-btn'),
-    startBtn:       $('start-btn'),
-    restartBtn:     $('restart-btn'),
-    titleBtn:       $('title-btn'),
-    startBestEl:    $('start-best-score'),
-    statDoneEl:     $('stat-done'),
-    statMissedEl:   $('stat-missed'),
-    statStreakEl:   $('stat-streak'),
-    statFavEl:      $('stat-fav'),
-    statFavRowEl:   $('stat-fav-row'),
-    streakEl:       $('streak-display'),
-    noPowerupsEl:   $('no-powerups-toggle'),
-    modeDiffRow:    $('mode-diff-row'),
+    area:            $('tab-area'),
+    segs:            [...document.querySelectorAll('.health-segment')],
+    scoreEl:         $('score-display'),
+    multEl:          $('multiplier-display'),
+    timerEl:         $('game-timer'),
+    tabCountEl:      $('tab-count'),
+    urlBar:          $('url-bar'),
+    startScreen:     $('start-screen'),
+    crashScreen:     $('crash-screen'),
+    finalTimeEl:     $('final-time'),
+    finalScoreEl:    $('final-score'),
+    newRecordEl:     $('new-record'),
+    leaderboardEl:   $('leaderboard'),
+    sharePreviewEl:  $('share-preview'),
+    copyBtn:         $('copy-btn'),
+    startBtn:        $('start-btn'),
+    restartBtn:      $('restart-btn'),
+    titleBtn:        $('title-btn'),
+    startBestEl:     $('start-best-score'),
+    statDoneEl:      $('stat-done'),
+    statMissedEl:    $('stat-missed'),
+    statStreakEl:    $('stat-streak'),
+    statFavEl:       $('stat-fav'),
+    statFavRowEl:    $('stat-fav-row'),
+    streakEl:        $('streak-display'),
+    noPowerupsEl:    $('no-powerups-toggle'),
+    hardModeEl:      $('hard-mode-toggle'),
+    modeDiffRow:     $('mode-diff-row'),
+    vignetteEl:      $('health-vignette'),
+    typeBreakdownEl: $('stat-type-breakdown'),
   };
 
   S = newState();
   initDrag();
   updateFavicon();
+  loadSettings();
+  applySettings();
   updateStartBest();
 
-  // Global keyboard handler for Type It / Password tabs
+  // Global keyboard handler
   document.addEventListener('keydown', e => {
-    if (activeTypeId === null) return;
+    // ESC = close settings if open, otherwise pause/resume
+    if (e.key === 'Escape') {
+      if (!$('settings-overlay').classList.contains('hidden')) {
+        closeSettings();
+        return;
+      }
+      if (!S.running) return;
+      S.paused ? resumeGame() : pauseGame();
+      return;
+    }
+    // Type It / Password tab input
+    if (S.paused || activeTypeId === null) return;
     const tab = S.tabs.get(activeTypeId);
     if (!tab || !tab.keyHandler || tab.done || tab.gone) { activeTypeId = null; return; }
     if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Enter') {
@@ -2547,6 +2766,7 @@ document.addEventListener('DOMContentLoaded', () => {
     endless: 'Survive as long as possible. No respite.',
     waves:   '3-minute rounds. +1 RAM between waves.',
     daily:   'Same seed for everyone today. One shot.',
+    sprint:  '90-second timer. Chase the highest score.',
   };
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2594,9 +2814,56 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.startBtn.addEventListener('click',   startGame);
   dom.restartBtn.addEventListener('click', startGame);
   dom.titleBtn.addEventListener('click', () => {
+    document.getElementById('crash-content')?.classList.remove('crash-anim');
     dom.crashScreen.classList.add('hidden');
     dom.startScreen.classList.remove('hidden');
     updateStartBest();
+  });
+
+  /* ── Settings panel ── */
+  const CB_DESC = {
+    normal:      'Uses default green / yellow / red palette.',
+    colorblind:  'Replaces red / green with blue / orange / purple — safe for red-green colorblindness.',
+    highcontrast:'Deeper, higher-contrast colors and adds text labels to Panic tabs.',
+  };
+
+  function syncSettingsUI() {
+    document.querySelectorAll('.settings-color-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.cb === settings.colorblind);
+    });
+    const cbInput = $('settings-reduced-motion');
+    if (cbInput) cbInput.checked = settings.reducedMotion;
+    const desc = $('colorblind-desc');
+    if (desc) desc.textContent = CB_DESC[settings.colorblind];
+  }
+
+  $('settings-toggle').addEventListener('click', () => {
+    syncSettingsUI();
+    openSettings();
+  });
+  $('start-settings-btn').addEventListener('click', () => {
+    syncSettingsUI();
+    openSettings();
+  });
+  $('settings-close').addEventListener('click', closeSettings);
+  $('pause-quit-btn').addEventListener('click', abandonGame);
+  $('settings-overlay').addEventListener('click', e => {
+    if (e.target === $('settings-overlay')) closeSettings();
+  });
+
+  document.querySelectorAll('.settings-color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.colorblind = btn.dataset.cb;
+      saveSettings();
+      applySettings();
+      syncSettingsUI();
+    });
+  });
+
+  $('settings-reduced-motion').addEventListener('change', e => {
+    settings.reducedMotion = e.target.checked;
+    saveSettings();
+    applySettings();
   });
 
   /* ── Dev Tools ── */
@@ -2668,11 +2935,6 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.removeItem(LS_KEY);
     updateStartBest();
   });
-  $('dev-clear-ach').addEventListener('click', () => {
-    if (!confirm('Reset achievements?')) return;
-    localStorage.removeItem(ACHIEV_KEY);
-  });
-
   dom.copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(S.shareMsg).then(() => {
       dom.copyBtn.textContent = '✓ Copied!';
