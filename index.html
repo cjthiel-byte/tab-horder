@@ -117,7 +117,7 @@
         </label>
       </div>
 
-      <div id="start-best-score" class="hidden"></div>
+      <div id="start-leaderboard" class="hidden"></div>
       <button id="start-btn">Start Game</button>
 
     </div>
@@ -135,6 +135,10 @@
           <div id="final-stats">
             <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
             <div>Final score &nbsp;<span id="final-score">0</span></div>
+          </div>
+          <div id="player-name-row">
+            <label for="player-name-input">Playing as</label>
+            <input id="player-name-input" maxlength="12" placeholder="Player" spellcheck="false" autocomplete="off">
           </div>
           <div id="leaderboard"></div>
         </div>
@@ -195,6 +199,7 @@
           <option value="panic">Panic</option>
           <option value="fake">Fake</option>
           <option value="powerup">Powerup</option>
+          <option value="tutorial">Tutorial</option>
         </select>
         <button id="dev-spawn-btn">Spawn</button>
       </div>
