@@ -4,8 +4,10 @@
 
 /* ── constants ── */
 const MAX_HEALTH = 5;
-const LS_KEY     = 'tabHoarder_best';
-const DAILY_KEY  = 'tabHoarder_daily';
+const LS_KEY      = 'tabHoarder_best';
+const DAILY_KEY   = 'tabHoarder_daily';
+const PLAYER_KEY  = 'tabHoarder_player';
+const TUTORIAL_KEY = 'tabHoarder_seen';
 
 const TITLES = [
   'URGENT!!!', 'You forgot this', "Don't ignore me",
@@ -57,6 +59,7 @@ const T = {
   BOSS:       'boss',
   ODD_ONE:    'oddOne',
   KNOB:       'knob',
+  TUTORIAL:   'tutorial',
 };
 
 const TIME_LIMIT = {
@@ -77,6 +80,7 @@ const TIME_LIMIT = {
   [T.POWERUP]:    12,
   [T.ODD_ONE]:    7,
   [T.KNOB]:       8,
+  [T.TUTORIAL]:   86400, // effectively infinite — tutorial never expires
 };
 
 // Per-type panic overrides (defaults to PANIC_TIME if not listed)
@@ -111,6 +115,7 @@ const FAVICON_COLOR = {
   [T.POWERUP]:    '#4caf50',
   [T.ODD_ONE]:    '#ff6f00',
   [T.KNOB]:       '#5e35b1',
+  [T.TUTORIAL]:   '#0288d1',
 };
 
 const STROOP_COLORS = [
@@ -232,44 +237,68 @@ function addToLeaderboard(score, time) {
   const key    = lbKey();
   if (!board[key]) board[key] = [];
   const oldTop = board[key][0]?.score || 0;
-  board[key].push({ score, time, date: Date.now() });
+  const name   = localStorage.getItem(PLAYER_KEY) || 'Player';
+  board[key].push({ score, time, date: Date.now(), name });
   board[key].sort((a, b) => b.score - a.score);
   board[key] = board[key].slice(0, 5);
   localStorage.setItem(LS_KEY, JSON.stringify(board));
   return score > oldTop;
 }
 
+function saveName(name) {
+  localStorage.setItem(PLAYER_KEY, name);
+  // Retroactively patch the current run's entry so the displayed leaderboard reflects the new name
+  const board = loadLeaderboard();
+  const key   = lbKey();
+  const entry = (board[key] || []).find(e => e.score === S.score && e.time === S.elapsed);
+  if (entry) {
+    entry.name = name;
+    localStorage.setItem(LS_KEY, JSON.stringify(board));
+    renderLeaderboard();
+  }
+}
+
+function lbLabel() {
+  const diffCap = chosenDiff.charAt(0).toUpperCase() + chosenDiff.slice(1);
+  return chosenMode === 'sprint' ? `Sprint (${diffCap})` : diffCap;
+}
+
 function updateStartBest() {
-  if (chosenMode === 'daily')  { updateStartDailyBest(); return; }
+  if (chosenMode === 'daily') { updateStartDailyBest(); return; }
   const board   = loadLeaderboard();
   const entries = board[lbKey()] || [];
-  if (entries.length > 0) {
-    const top    = entries[0];
-    const prefix = chosenMode === 'sprint' ? `Sprint best (${chosenDiff})` : `Best (${chosenDiff})`;
-    dom.startBestEl.textContent = `${prefix}: ${top.score.toLocaleString()} — ${fmt(top.time)}`;
-    dom.startBestEl.classList.remove('hidden');
+  const label   = lbLabel();
+  if (entries.length === 0) {
+    dom.startBestEl.innerHTML = `<div class="slb-empty">No runs yet — be the first!</div>`;
   } else {
-    dom.startBestEl.classList.add('hidden');
+    dom.startBestEl.innerHTML = `
+      <div class="slb-title">${label} Leaderboard</div>
+      ${entries.map((e, i) => `
+        <div class="slb-row">
+          <span class="slb-rank">#${i + 1}</span>
+          <span class="slb-name">${e.name || '—'}</span>
+          <span class="slb-score">${e.score.toLocaleString()}</span>
+          <span class="slb-time">${fmt(e.time)}</span>
+        </div>`).join('')}`;
   }
+  dom.startBestEl.classList.remove('hidden');
 }
 
 function updateStartDailyBest() {
   const best = getDailyBestToday();
   if (best) {
-    dom.startBestEl.textContent = `Today's best: ${best.score.toLocaleString()} — ${fmt(best.time)}`;
-    dom.startBestEl.classList.remove('hidden');
+    dom.startBestEl.innerHTML = `<div class="slb-daily">Today's best: <strong>${best.score.toLocaleString()}</strong> — ${fmt(best.time)}</div>`;
   } else {
-    dom.startBestEl.textContent = "No score today yet — play now!";
-    dom.startBestEl.classList.remove('hidden');
+    dom.startBestEl.innerHTML = `<div class="slb-daily slb-daily-empty">No score today yet — play now!</div>`;
   }
+  dom.startBestEl.classList.remove('hidden');
 }
 
 function renderLeaderboard() {
   const board   = loadLeaderboard();
   const key     = lbKey();
   const entries = board[key] ?? [];
-  const diffCap = chosenDiff.charAt(0).toUpperCase() + chosenDiff.slice(1);
-  const label   = chosenMode === 'sprint' ? `Sprint (${diffCap})` : diffCap;
+  const label   = lbLabel();
   if (entries.length === 0) {
     dom.leaderboardEl.innerHTML = `<div class="lb-title">${label} — No runs yet</div>`;
     return;
@@ -279,6 +308,7 @@ function renderLeaderboard() {
     ${entries.map((e, i) => `
       <div class="lb-row${e.score === S.score && e.time === S.elapsed ? ' lb-current' : ''}">
         <span class="lb-rank">#${i + 1}</span>
+        <span class="lb-name">${e.name || '—'}</span>
         <span class="lb-score">${e.score.toLocaleString()}</span>
         <span class="lb-time">${fmt(e.time)}</span>
       </div>`).join('')}`;
@@ -1583,6 +1613,57 @@ function mkKnob(tab) {
   };
 }
 
+/* ── Tutorial ── */
+function finishTutorial() {
+  localStorage.setItem(TUTORIAL_KEY, '1');
+  restartSpawn();
+  setTimeout(spawnTab, 300);
+}
+
+function mkTutorial(tab) {
+  const el    = mk('div', 'tab-content tutorial-content');
+  const total = 10;
+  let clicks   = 0;
+  let finished = false;
+
+  el.innerHTML = `
+    <p class="tut-intro">Tabs spawn and expire — complete each one before time runs out!</p>
+    <p class="tut-sub">Click the button to practice:</p>
+    <button class="tut-btn">Click me!</button>
+    <div class="tut-progress">0 / ${total}</div>
+    <button class="tut-skip">Skip tutorial</button>`;
+
+  const btn        = el.querySelector('.tut-btn');
+  const progressEl = el.querySelector('.tut-progress');
+  const skipBtn    = el.querySelector('.tut-skip');
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    tab.done = true;
+    const c = tab.element;
+    if (c) {
+      c.style.pointerEvents = 'none';
+      c.style.transition    = 'opacity 0.3s ease-in, transform 0.3s ease-in';
+      c.style.opacity       = '0';
+      c.style.transform     = 'scale(0.9) translateY(-20px)';
+    }
+    setTimeout(() => { dropTab(tab.id); finishTutorial(); }, 300);
+  }
+
+  btn.addEventListener('click', () => {
+    if (finished) return;
+    clicks++;
+    progressEl.textContent = `${clicks} / ${total}`;
+    btn.textContent = clicks >= total ? 'Done!' : 'Click me!';
+    if (clicks >= total) finish();
+  });
+
+  skipBtn.addEventListener('click', finish);
+
+  return { el, cleanup: () => {} };
+}
+
 /* ── dispatcher ── */
 function buildGame(type, tab) {
   switch (type) {
@@ -1602,6 +1683,7 @@ function buildGame(type, tab) {
     case T.POWERUP:    return mkPowerup(tab);
     case T.ODD_ONE:    return mkOddOne(tab);
     case T.KNOB:       return mkKnob(tab);
+    case T.TUTORIAL:   return mkTutorial(tab);
     default:           return mkClickSpam(tab);
   }
 }
@@ -1776,7 +1858,7 @@ function spawnTab(opts = {}) {
 
   const tab = {
     id, type, inner, isPanic,
-    title:       pick(TITLES),
+    title:       type === T.TUTORIAL ? 'Getting Started' : pick(TITLES),
     tLimit,
     deadline:    Date.now() + tLimit * 1000,
     element:     null,
@@ -1809,6 +1891,7 @@ function spawnTab(opts = {}) {
   if (type === T.POWERUP) cardClass += ' powerup-tab';
   if (linkGroup !== null) cardClass += ' linked-tab';
   if (isBouncing)         cardClass += ' bouncing-tab';
+  if (type === T.TUTORIAL) cardClass += ' tutorial-tab';
   const card = mk('div', cardClass);
   card.id = `tab-${id}`;
 
@@ -2260,6 +2343,7 @@ function tick() {
 
   S.tabs.forEach((tab, id) => {
     if (tab.done || tab.gone) return;
+    if (tab.type === T.TUTORIAL) return; // timer is hidden; tutorial dismisses itself
 
     // Time Warp: extend deadlines by half the tick interval (net 50% slow)
     if (S.timeWarpActive) tab.deadline += 50;
@@ -2527,8 +2611,12 @@ function startGame() {
 
   S.tickTid  = setInterval(tick,      100);
   S.clockTid = setInterval(clockTick, 1000);
-  restartSpawn();
-  setTimeout(spawnTab, 500);
+  if (!localStorage.getItem(TUTORIAL_KEY)) {
+    setTimeout(() => spawnTab({ forceType: T.TUTORIAL }), 500);
+  } else {
+    restartSpawn();
+    setTimeout(spawnTab, 500);
+  }
 }
 
 function endGame() {
@@ -2618,6 +2706,11 @@ function endGame() {
     crashContent.classList.add('crash-anim');
   }
   dom.crashScreen.classList.remove('hidden');
+
+  // Populate player name field with stored name
+  if (dom.playerNameEl) {
+    dom.playerNameEl.value = localStorage.getItem(PLAYER_KEY) || '';
+  }
 }
 
 /* ══════════════════════════════════════════════
@@ -2718,7 +2811,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startBtn:        $('start-btn'),
     restartBtn:      $('restart-btn'),
     titleBtn:        $('title-btn'),
-    startBestEl:     $('start-best-score'),
+    startBestEl:     $('start-leaderboard'),
     statDoneEl:      $('stat-done'),
     statMissedEl:    $('stat-missed'),
     statStreakEl:    $('stat-streak'),
@@ -2730,7 +2823,19 @@ document.addEventListener('DOMContentLoaded', () => {
     modeDiffRow:     $('mode-diff-row'),
     vignetteEl:      $('health-vignette'),
     typeBreakdownEl: $('stat-type-breakdown'),
+    playerNameEl:    $('player-name-input'),
   };
+
+  if (dom.playerNameEl) {
+    dom.playerNameEl.value = localStorage.getItem(PLAYER_KEY) || '';
+    let nameSaveTid = null;
+    dom.playerNameEl.addEventListener('input', () => {
+      clearTimeout(nameSaveTid);
+      nameSaveTid = setTimeout(() => {
+        saveName(dom.playerNameEl.value.trim().slice(0, 12) || 'Player');
+      }, 400);
+    });
+  }
 
   S = newState();
   initDrag();
