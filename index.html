@@ -23,6 +23,7 @@
 
     <div id="url-bar">tab-hoarder://survive</div>
 
+    <button id="settings-toggle" title="Settings">⚙</button>
     <button id="dev-toggle" title="Dev Tools">🛠</button>
 
     <div id="hud-right">
@@ -37,9 +38,22 @@
   <!-- Game area where tabs spawn -->
   <main id="tab-area"></main>
 
+  <!-- Low-health vignette overlay -->
+  <div id="health-vignette"></div>
+
+  <!-- Pause overlay -->
+  <div id="pause-overlay" class="hidden">
+    <div id="pause-card">
+      <div id="pause-title">⏸ PAUSED</div>
+      <p id="pause-sub">Press <kbd>ESC</kbd> to resume</p>
+      <button id="pause-quit-btn">Return to Start</button>
+    </div>
+  </div>
+
   <!-- Start screen -->
   <div id="start-screen">
     <div id="start-card">
+      <button id="start-settings-btn" title="Settings">⚙</button>
       <h1>Tab Hoarder</h1>
       <p>Tabs keep spawning. Complete each mini-game before it expires.<br>
          Lose all 5 RAM bars and your browser crashes.</p>
@@ -78,6 +92,7 @@
       <div id="mode-picker">
         <button class="mode-btn active" data-mode="endless">Endless</button>
         <button class="mode-btn" data-mode="waves">Waves</button>
+        <button class="mode-btn" data-mode="sprint">Sprint</button>
         <button class="mode-btn" data-mode="daily">Daily</button>
       </div>
       <div id="mode-desc">Survive as long as possible. No respite.</div>
@@ -96,6 +111,10 @@
           <input type="checkbox" id="no-powerups-toggle">
           No Powerups
         </label>
+        <label class="modifier-label">
+          <input type="checkbox" id="hard-mode-toggle">
+          No Timers
+        </label>
       </div>
 
       <div id="start-best-score" class="hidden"></div>
@@ -111,17 +130,23 @@
       <h1>Your browser crashed.</h1>
       <p id="crash-sub">Too many tabs open.</p>
       <div id="new-record" class="hidden">NEW RECORD!</div>
-      <div id="final-stats">
-        <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
-        <div>Final score &nbsp;<span id="final-score">0</span></div>
+      <div id="crash-columns">
+        <div id="crash-col-left">
+          <div id="final-stats">
+            <div>Time survived &nbsp;<span id="final-time">00:00</span></div>
+            <div>Final score &nbsp;<span id="final-score">0</span></div>
+          </div>
+          <div id="leaderboard"></div>
+        </div>
+        <div id="crash-col-right">
+          <div id="run-stats">
+            <div><span id="stat-done">0</span> completed &nbsp;·&nbsp; <span id="stat-missed">0</span> missed</div>
+            <div>Best streak &nbsp;<span id="stat-streak">0</span></div>
+            <div id="stat-fav-row">Favorite &nbsp;<span id="stat-fav">—</span></div>
+          </div>
+          <div id="stat-type-breakdown" class="hidden"></div>
+        </div>
       </div>
-      <div id="leaderboard"></div>
-      <div id="run-stats">
-        <div><span id="stat-done">0</span> completed &nbsp;·&nbsp; <span id="stat-missed">0</span> missed</div>
-        <div>Best streak &nbsp;<span id="stat-streak">0</span></div>
-        <div id="stat-fav-row">Favorite &nbsp;<span id="stat-fav">—</span></div>
-      </div>
-      <div id="achievements-earned" class="hidden"></div>
       <p id="share-preview"></p>
       <button id="copy-btn">📋 Copy &amp; Share</button>
       <button id="restart-btn">Restart</button>
@@ -201,8 +226,51 @@
       <div class="dev-label">Data</div>
       <div class="dev-actions">
         <button class="dev-action-btn dev-danger" id="dev-clear-lb">Clear Leaderboard</button>
-        <button class="dev-action-btn dev-danger" id="dev-clear-ach">Reset Achievements</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Settings overlay -->
+  <div id="settings-overlay" class="hidden">
+    <div id="settings-panel">
+
+      <div class="settings-header">
+        <span>⚙ Settings</span>
+        <button id="settings-close">✕</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-label">Color Mode</div>
+        <div class="settings-color-group" id="colorblind-picker">
+          <button class="settings-color-btn active" data-cb="normal">
+            <span class="scb-swatch"></span>
+            Normal
+          </button>
+          <button class="settings-color-btn" data-cb="colorblind">
+            <span class="scb-swatch scb-swatch-cb"></span>
+            Colorblind
+          </button>
+          <button class="settings-color-btn" data-cb="highcontrast">
+            <span class="scb-swatch scb-swatch-hc"></span>
+            High Contrast
+          </button>
+        </div>
+        <div id="colorblind-desc" class="settings-desc">Uses default green / yellow / red palette.</div>
+      </div>
+
+      <div class="settings-section settings-section-last">
+        <label class="settings-toggle-row" for="settings-reduced-motion">
+          <div class="settings-toggle-text">
+            <div class="settings-toggle-name">Reduced Motion</div>
+            <div class="settings-toggle-desc">Disables screen shake, pulsing outlines, and vignette</div>
+          </div>
+          <input type="checkbox" id="settings-reduced-motion" class="settings-toggle-input">
+          <div class="settings-toggle-track">
+            <div class="settings-toggle-thumb"></div>
+          </div>
+        </label>
+      </div>
+
     </div>
   </div>
 
